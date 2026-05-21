@@ -14,7 +14,9 @@
     "lint": "biome check",
     "fix": "biome check --write",
     "dev": "tauri dev",
-    "build": "tauri build"
+    "build": "tauri build",
+    "e2e": "node sidecar/e2e-test.mjs",
+    "sidecar:ping": "echo '{\"id\":\"p\",\"cmd\":\"ping\"}' | node sidecar/pack-server.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",

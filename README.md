@@ -64,6 +64,28 @@ pnpm dev
 
 `pnpm dev` boots the Next.js dev server and opens a native Tauri window.
 
+### Verify the core loop without Tauri (M0 smoke test)
+
+Even before the Tauri window is wired up, you can validate the full
+"pack → summarize → diagram → Q&A" chain from the terminal:
+
+```bash
+# 1. Sidecar should respond to ping
+pnpm sidecar:ping
+
+# 2. Run the end-to-end test against any local Git project
+export ANTHROPIC_API_KEY=sk-ant-...
+pnpm e2e /path/to/some/project
+
+# 3. Optionally ask a follow-up question
+RS_ASK="How is authentication handled in this codebase?" \
+  pnpm e2e /path/to/some/project
+```
+
+The script prints the tech stack, module breakdown, an auto-generated
+Mermaid architecture diagram, and concept cards — exactly what the Tauri UI
+will surface. This is the M0 verification gate per the PRD.
+
 ## Architecture
 
 ```
