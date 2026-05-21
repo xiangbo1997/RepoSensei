@@ -1,0 +1,115 @@
+# RepoSensei
+
+> Your AI repo sensei — drop in any Git project and understand it in 15 minutes.
+
+[![Status](https://img.shields.io/badge/status-M0_prototype-orange)](#roadmap)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Tauri](https://img.shields.io/badge/Tauri-2.0-24c8db)](https://tauri.app)
+[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org)
+
+---
+
+## What it does
+
+You cloned a GitHub repo. You don't understand it. Existing AI tools optimize
+for **writing** code; RepoSensei optimizes for **reading** code.
+
+- 📦 **Import any local Git project** — drag-and-drop or path picker
+- 🧭 **Auto-generated architecture** — Mermaid diagrams + module summaries
+- 💬 **Code-aware Q&A** — ask questions grounded in the actual source
+- 🧠 **Concept bridges** — when the code uses DI / Saga / Server Components,
+  you get a short explanation + a link to authoritative docs
+- 🔑 **BYOK (Bring Your Own Key)** — Claude / OpenAI / Gemini, no SaaS lock-in
+- 🏠 **Local-first** — your code never leaves your machine (M2 will add fully
+  offline LLMs via Ollama)
+
+## Why another tool?
+
+| You want… | Existing tools | RepoSensei |
+| --- | --- | --- |
+| Write code faster | Cursor, Copilot, Claude Code ✅ | Not the goal |
+| Understand a repo to use it | DeepWiki (public only), Cody (enterprise) | ✅ any local repo |
+| Learn the tech behind the code | Read docs yourself | ✅ auto concept bridges |
+| Keep your code private | Most are cloud | ✅ local + BYOK |
+
+## Status — M0 prototype
+
+This is week 1. Currently working:
+
+- [x] Tauri 2.0 + Next.js 16 + React 19 scaffold
+- [x] Project picker (file-system dialog)
+- [ ] Repomix sidecar — pack a repo into LLM-friendly text
+- [ ] Claude Sonnet 4.6 integration with prompt caching
+- [ ] Mermaid architecture diagram rendering
+- [ ] Single-turn Q&A interface
+- [ ] Validation on 3 real projects (React / Next.js / Rust)
+
+See [the roadmap](#roadmap) for what's coming.
+
+## Quick start (dev)
+
+Prerequisites:
+
+- Node.js 20+ (Node 24 recommended)
+- pnpm 10+
+- Rust 1.80+ (`rustup install stable`)
+- macOS / Linux / Windows
+
+```bash
+git clone https://github.com/<your-handle>/reposensei.git
+cd reposensei
+pnpm install
+pnpm dev
+```
+
+`pnpm dev` boots the Next.js dev server and opens a native Tauri window.
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                  Tauri 2.0 native window                 │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  Next.js 16 (SSG) + React 19 + Tailwind 4          │  │
+│  │  ├─ project picker / file tree                     │  │
+│  │  ├─ Mermaid renderer                               │  │
+│  │  └─ chat UI (Vercel AI SDK)                        │  │
+│  └────────────────────────────────────────────────────┘  │
+│                          ↕ IPC                            │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  Rust core (fs, git, lancedb, tree-sitter FFI)     │  │
+│  └────────────────────────────────────────────────────┘  │
+│                          ↓ sidecar                        │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │  Node sidecar — Repomix packing                    │  │
+│  └────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
+              │
+              ↓ HTTPS (BYOK)
+   Claude / OpenAI / Gemini / Ollama (M2)
+```
+
+## Roadmap
+
+- **M0 (current, ~3 weeks)** — Prototype: import → Repomix → Claude summary →
+  Mermaid + single-turn Q&A. Goal: prove the loop works on 3 real projects.
+- **M1 (~3-4 weeks)** — MVP: tree-sitter symbol index + LanceDB RAG, multi-turn
+  Q&A, concept bridges, BYOK panel, project history.
+- **M2 (~4 weeks)** — Public beta: external knowledge sources (Context7 / MDN),
+  learning paths, incremental indexing, local LLM via Ollama.
+- **M3+** — VS Code extension, project comparison, learning notes export.
+
+## Built on the shoulders of giants
+
+- [Tauri 2.0](https://tauri.app) — small, fast, secure desktop runtime
+- [kvnxiao/tauri-nextjs-template](https://github.com/kvnxiao/tauri-nextjs-template)
+  — battle-tested scaffolding
+- [Repomix](https://github.com/yamadashy/repomix) — repository packing with
+  tree-sitter compression
+- [Aider's repo-map](https://aider.chat/2023/10/22/repomap.html) — inspiration
+  for tree-sitter + PageRank ranking
+- [Mermaid](https://mermaid.js.org) — declarative diagrams from text
+
+## License
+
+MIT — see [LICENSE](LICENSE).
