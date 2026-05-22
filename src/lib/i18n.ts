@@ -47,6 +47,21 @@ const en: Dict = {
 
   "mermaid.failed": "Mermaid render failed — show source",
 
+  "tree.title": "Files",
+  "tree.search": "Filter files…",
+  "tree.empty": "No files",
+  "tree.empty.filtered": "Nothing matches",
+
+  "code.noFile": "No file selected",
+  "code.pickFile": "Pick a file on the left to view its source",
+  "code.loading": "Loading…",
+  "code.stats": "{lines} lines · {bytes} B",
+  "code.askAboutFile": "💬 Ask about this file",
+  "code.askPrompt": "[{path}] What does this file do? Explain it to me.",
+
+  "summary.toggle.show": "Show summary",
+  "summary.toggle.hide": "Hide summary",
+
   "footer.build": "M1 prototype · v0.1.0 · Tauri 2 + Next.js 16",
 };
 
@@ -87,6 +102,21 @@ const zh: Dict = {
   "chat.error": "⚠️ 出错了：{message}",
 
   "mermaid.failed": "Mermaid 渲染失败 — 查看源码",
+
+  "tree.title": "文件树",
+  "tree.search": "过滤文件…",
+  "tree.empty": "没有文件",
+  "tree.empty.filtered": "没有匹配项",
+
+  "code.noFile": "未选择文件",
+  "code.pickFile": "在左边选一个文件查看源码",
+  "code.loading": "加载中…",
+  "code.stats": "{lines} 行 · {bytes} B",
+  "code.askAboutFile": "💬 针对此文件提问",
+  "code.askPrompt": "[{path}] 这个文件是干什么的？讲一下。",
+
+  "summary.toggle.show": "展开总结",
+  "summary.toggle.hide": "收起总结",
 
   "footer.build": "M1 原型 · v0.1.0 · Tauri 2 + Next.js 16",
 };

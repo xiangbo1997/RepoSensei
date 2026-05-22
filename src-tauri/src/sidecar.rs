@@ -1,5 +1,8 @@
-//! Spawn the Node sidecar (`sidecar/pack-server.mjs`) and exchange one
-//! newline-delimited JSON request/response. Returns the parsed payload.
+//! Spawn the Node sidecar (`sidecar/pack-server.mjs`) once per request and
+//! exchange one newline-delimited JSON message. Three commands supported:
+//!   - pack:       run Repomix on a project
+//!   - list_files: enumerate the file tree (skipping noise + binaries)
+//!   - read_file:  return one file's UTF-8 contents
 
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -21,6 +24,25 @@ pub struct PackedProject {
     pub content: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FileEntry {
+    pub path: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FileListing {
+    pub root: String,
+    pub files: Vec<FileEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FileContent {
+    pub path: String,
+    pub size: u64,
+    pub content: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct SidecarResponse {
     ok: bool,
@@ -28,11 +50,6 @@ struct SidecarResponse {
     error: Option<String>,
 }
 
-/// Path to the sidecar script.
-///
-/// In dev mode, the script lives at `<repo>/sidecar/pack-server.mjs` relative
-/// to the cargo manifest. In production we rely on a bundled resource path,
-/// but M1 only targets dev mode.
 fn sidecar_script_path() -> PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     PathBuf::from(manifest_dir)
@@ -41,7 +58,12 @@ fn sidecar_script_path() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("sidecar/pack-server.mjs"))
 }
 
-pub async fn pack_project(project_path: String) -> Result<PackedProject, String> {
+/// Generic call: spawn node sidecar, write one JSON line, read one JSON
+/// response, then kill the child. Deserialize the response data into T.
+async fn call_sidecar<T>(cmd: &str, args: serde_json::Value) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
     let script = sidecar_script_path();
     if !script.exists() {
         return Err(format!("sidecar script not found at {}", script.display()));
@@ -56,9 +78,9 @@ pub async fn pack_project(project_path: String) -> Result<PackedProject, String>
         .map_err(|e| format!("failed to spawn node sidecar: {e}"))?;
 
     let request = serde_json::json!({
-        "id": "pack-1",
-        "cmd": "pack",
-        "args": { "path": project_path },
+        "id": "req-1",
+        "cmd": cmd,
+        "args": args,
     });
 
     if let Some(stdin) = child.stdin.as_mut() {
@@ -74,15 +96,12 @@ pub async fn pack_project(project_path: String) -> Result<PackedProject, String>
         .ok_or_else(|| "sidecar stdout missing".to_string())?;
     let mut reader = BufReader::new(stdout).lines();
 
-    // Single response, single line.
     let line = reader
         .next_line()
         .await
         .map_err(|e| format!("read sidecar stdout failed: {e}"))?
         .ok_or_else(|| "sidecar produced no output".to_string())?;
 
-    // Kill child eagerly; sidecar exits naturally after responding but we
-    // don't want a dangling node process if anything goes wrong.
     let _ = child.kill().await;
 
     let resp: SidecarResponse = serde_json::from_str(&line)
@@ -95,6 +114,22 @@ pub async fn pack_project(project_path: String) -> Result<PackedProject, String>
     let data = resp
         .data
         .ok_or_else(|| "sidecar ok=true with no data".to_string())?;
-    serde_json::from_value::<PackedProject>(data)
-        .map_err(|e| format!("decode PackedProject failed: {e}"))
+    serde_json::from_value::<T>(data)
+        .map_err(|e| format!("decode {cmd} response failed: {e}"))
+}
+
+pub async fn pack_project(project_path: String) -> Result<PackedProject, String> {
+    call_sidecar("pack", serde_json::json!({ "path": project_path })).await
+}
+
+pub async fn list_files(project_path: String) -> Result<FileListing, String> {
+    call_sidecar("list_files", serde_json::json!({ "path": project_path })).await
+}
+
+pub async fn read_file(root: String, relative: String) -> Result<FileContent, String> {
+    call_sidecar(
+        "read_file",
+        serde_json::json!({ "root": root, "relative": relative }),
+    )
+    .await
 }

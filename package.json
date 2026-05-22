@@ -28,7 +28,10 @@
     "openai": "^6.38.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "repomix": "^1.14.0",
+    "shiki": "^4.1.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
