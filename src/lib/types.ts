@@ -1,25 +1,10 @@
-export type LlmProvider = "anthropic" | "openai" | "gemini";
-
-export interface ProjectMeta {
-  path: string;
+export interface PackedProject {
   name: string;
+  path: string;
   filesScanned: number;
   totalChars: number;
   totalTokens: number;
-}
-
-export interface PackedProject extends ProjectMeta {
   content: string;
-  fileTree: string;
-}
-
-export interface ProjectSummary {
-  techStack: string[];
-  modules: ModuleSummary[];
-  entryPoints: string[];
-  overview: string;
-  mermaidArchitecture: string;
-  conceptCards: ConceptCard[];
 }
 
 export interface ModuleSummary {
@@ -35,8 +20,20 @@ export interface ConceptCard {
   learnMore: string;
 }
 
+export interface ProjectSummary {
+  techStack: string[];
+  modules: ModuleSummary[];
+  entryPoints: string[];
+  overview: string;
+  mermaidArchitecture: string;
+  conceptCards: ConceptCard[];
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
-  createdAt: number;
+}
+
+export interface ChatBubble extends ChatMessage {
+  id: string;
 }

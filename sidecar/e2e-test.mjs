@@ -24,11 +24,36 @@
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load .env.local from the project root if it exists. Lets users avoid
+// re-exporting OPENAI_BASE_URL / OPENAI_API_KEY on every run.
+loadDotEnv(path.resolve(__dirname, "..", ".env.local"));
+
+function loadDotEnv(file) {
+  try {
+    const raw = readFileSync(file, "utf8");
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eq = trimmed.indexOf("=");
+      if (eq === -1) continue;
+      const key = trimmed.slice(0, eq).trim();
+      const value = trimmed
+        .slice(eq + 1)
+        .trim()
+        .replace(/^["']|["']$/g, "");
+      if (!(key in process.env)) process.env[key] = value;
+    }
+  } catch {
+    // file missing is fine
+  }
+}
 
 const projectPath = process.argv[2];
 if (!projectPath) {
@@ -172,30 +197,55 @@ async function summarizeViaOpenAI(userPrompt) {
   // Some reverse proxies WAF-block the OpenAI SDK's fingerprint headers.
   // Use bare fetch with minimal headers instead.
   const url = `${process.env.OPENAI_BASE_URL.replace(/\/$/, "")}/chat/completions`;
-  const resp = await fetch(url, {
+  const body = JSON.stringify({
+    model: SUMMARY_MODEL,
+    max_tokens: 4096,
+    messages: [
+      { role: "system", content: SUMMARY_INSTRUCTIONS },
+      { role: "user", content: userPrompt },
+    ],
+  });
+  const resp = await fetchWithRetry(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${openaiKey}`,
     },
-    body: JSON.stringify({
-      model: SUMMARY_MODEL,
-      max_tokens: 4096,
-      messages: [
-        { role: "system", content: SUMMARY_INSTRUCTIONS },
-        { role: "user", content: userPrompt },
-      ],
-    }),
+    body,
   });
   if (!resp.ok) {
-    const body = await resp.text();
+    const errBody = await resp.text();
     throw new Error(
-      `LLM request failed: ${resp.status} ${resp.statusText} — ${body.slice(0, 300)}`,
+      `LLM request failed: ${resp.status} ${resp.statusText} — ${errBody.slice(0, 300)}`,
     );
   }
   const data = await resp.json();
   const text = data.choices?.[0]?.message?.content ?? "";
   return parseJsonResponse(text);
+}
+
+async function fetchWithRetry(url, init, attempts = 3) {
+  let lastErr;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fetch(url, init);
+    } catch (e) {
+      lastErr = e;
+      const cause = e?.cause?.code ?? e?.code ?? "";
+      const transient =
+        cause === "ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR" ||
+        cause === "ECONNRESET" ||
+        cause === "ETIMEDOUT" ||
+        cause === "UND_ERR_SOCKET";
+      if (!transient || i === attempts) throw e;
+      const wait = 1500 * i;
+      console.warn(
+        `   ⚠ proxy hiccup (${cause}), retrying in ${wait}ms (attempt ${i + 1}/${attempts})`,
+      );
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+  throw lastErr;
 }
 
 async function summarizeViaAnthropic(packed, _userPrompt) {

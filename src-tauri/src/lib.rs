@@ -1,11 +1,31 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-use std::time::{SystemTime, UNIX_EPOCH};
+mod llm;
+mod sidecar;
+
+use llm::{ChatMessage, ProjectSummary};
+use sidecar::PackedProject;
 
 #[tauri::command]
-fn greet() -> String {
-  let now = SystemTime::now();
-  let epoch_ms = now.duration_since(UNIX_EPOCH).unwrap().as_millis();
-  format!("Hello world from Rust! Current epoch: {epoch_ms}")
+async fn pack_project(path: String) -> Result<PackedProject, String> {
+  sidecar::pack_project(path).await
+}
+
+#[tauri::command]
+async fn summarize_project(
+  packed: PackedProject,
+  locale: String,
+) -> Result<ProjectSummary, String> {
+  llm::summarize(&packed, &locale).await
+}
+
+#[tauri::command]
+async fn chat_ask(
+  window: tauri::Window,
+  summary: ProjectSummary,
+  history: Vec<ChatMessage>,
+  question: String,
+  locale: String,
+) -> Result<(), String> {
+  llm::chat_stream(window, &summary, &history, &question, &locale).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,7 +33,11 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_dialog::init())
-    .invoke_handler(tauri::generate_handler![greet])
+    .invoke_handler(tauri::generate_handler![
+      pack_project,
+      summarize_project,
+      chat_ask,
+    ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
