@@ -361,6 +361,10 @@ pub async fn chat_stream(
     );
     if !grounding.is_empty() {
         system.push_str(&grounding);
+        // 显式要求模型引用检索到的 file:line，让回答可溯源、可核验。
+        system.push_str(
+            "\n\nWhen your answer relies on the retrieved source above, cite the file and line range (e.g. `src/foo.ts:10-22`). Prefer the retrieved code over assumptions.",
+        );
     }
 
     match cfg.provider {

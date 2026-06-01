@@ -62,6 +62,14 @@ const en: Dict = {
   "summary.toggle.show": "Show summary",
   "summary.toggle.hide": "Hide summary",
 
+  "search.title": "Search code",
+  "search.placeholder": "Search symbols / code…",
+  "search.indexing": "Indexing…",
+  "search.noIndex": "Index not ready yet — try again shortly",
+  "search.empty": "No matches",
+  "search.hint":
+    "Search functions, classes, or any code. Try path: or kind: filters.",
+
   "footer.build": "M1 prototype · v0.1.0 · Tauri 2 + Next.js 16",
 };
 
@@ -117,6 +125,13 @@ const zh: Dict = {
 
   "summary.toggle.show": "展开总结",
   "summary.toggle.hide": "收起总结",
+
+  "search.title": "搜索代码",
+  "search.placeholder": "搜索符号 / 代码…",
+  "search.indexing": "建立索引中…",
+  "search.noIndex": "索引还没就绪 — 稍后再试",
+  "search.empty": "没有匹配项",
+  "search.hint": "搜索函数、类或任意代码。可用 path: 或 kind: 过滤。",
 
   "footer.build": "M1 原型 · v0.1.0 · Tauri 2 + Next.js 16",
 };

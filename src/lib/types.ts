@@ -29,6 +29,19 @@ export interface ProjectSummary {
   conceptCards: ConceptCard[];
 }
 
+export interface CodeHit {
+  path: string;
+  score: number;
+  content: string;
+  startLine: number;
+  endLine: number;
+}
+
+export interface SearchResult {
+  hits: CodeHit[];
+  indexed: boolean;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

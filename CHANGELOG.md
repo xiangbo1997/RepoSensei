@@ -9,6 +9,9 @@
 
 ### Added
 
+- **代码搜索面板**：`search_code` 暴露为 Tauri command，左栏新增搜索框（防抖），
+  结果按 `path:line` 展示并可点击跳转到 CodeViewer。让已建的 FTS5 索引直接服务
+  用户检索，不再只隐式服务 Q&A。Q&A 系统提示新增显式 `file:line` 引用要求。
 - **检索结果带行号溯源**：FTS5 索引存 `start_line`/`end_line`（UNINDEXED），检索
   返回行号，grounding 注入按 `file:line` 标注，Q&A 回答可给出可溯源引用。索引加
   schema 版本守卫，升级时自动重建旧索引。

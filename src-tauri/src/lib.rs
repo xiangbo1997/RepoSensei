@@ -2,7 +2,7 @@ mod llm;
 mod sidecar;
 
 use llm::{ChatMessage, ProjectSummary};
-use sidecar::{FileContent, FileListing, IndexResult, PackedProject};
+use sidecar::{FileContent, FileListing, IndexResult, PackedProject, SearchResult};
 
 #[tauri::command]
 async fn pack_project(path: String) -> Result<PackedProject, String> {
@@ -12,6 +12,15 @@ async fn pack_project(path: String) -> Result<PackedProject, String> {
 #[tauri::command]
 async fn index_project(path: String) -> Result<IndexResult, String> {
   sidecar::index_project(path).await
+}
+
+#[tauri::command]
+async fn search_code(
+  path: String,
+  query: String,
+  limit: Option<u32>,
+) -> Result<SearchResult, String> {
+  sidecar::search_code(path, query, limit.unwrap_or(10)).await
 }
 
 #[tauri::command]
@@ -60,6 +69,7 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       pack_project,
       index_project,
+      search_code,
       list_files,
       read_file,
       summarize_project,
