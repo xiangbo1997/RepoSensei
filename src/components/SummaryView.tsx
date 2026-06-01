@@ -1,6 +1,7 @@
 "use client";
 
 import { useT } from "@/lib/i18n";
+import { buildTour } from "@/lib/tour";
 import type { ProjectSummary } from "@/lib/types";
 import { MermaidView } from "./MermaidView";
 
@@ -10,6 +11,9 @@ interface Props {
 
 export function SummaryView({ summary }: Props) {
   const { t } = useT();
+  const tour = buildTour(summary.modules);
+  // 仅当 LLM 给出了模块依赖（产生多于一层）时才展示学习路径，否则与 Modules 冗余。
+  const showTour = tour.some((s) => s.layer > 0);
   return (
     <div className="space-y-10 py-2">
       <section className="animate-in" style={{ animationDelay: "0ms" }}>
@@ -66,6 +70,32 @@ export function SummaryView({ summary }: Props) {
           <MermaidView code={summary.mermaidArchitecture} />
         </div>
       </section>
+
+      {showTour && (
+        <section className="animate-in" style={{ animationDelay: "350ms" }}>
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-4">
+            🧭 {t("summary.tour")}
+          </h2>
+          <ol className="relative border-l-2 border-amber-200 dark:border-amber-900/40 ml-2 space-y-3">
+            {tour.map((step, i) => (
+              <li key={step.module.path} className="ml-4">
+                <div className="absolute -left-[7px] mt-1.5 w-3 h-3 rounded-full bg-amber-500 ring-4 ring-white dark:ring-slate-900" />
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-widest shrink-0">
+                    {t("summary.tour.step", { n: i + 1 })}
+                  </span>
+                  <span className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                    {step.module.path}
+                  </span>
+                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mt-0.5">
+                  {step.module.purpose}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       <section className="animate-in" style={{ animationDelay: "400ms" }}>
         <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">

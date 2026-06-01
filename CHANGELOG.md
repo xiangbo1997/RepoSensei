@@ -9,6 +9,9 @@
 
 ### Added
 
+- **拓扑学习路径（Tour）**：summary 新增 `modules[].dependsOn`（LLM 给出模块依赖），
+  前端 `lib/tour.ts` 用 Kahn 拓扑排序生成「按依赖顺序」的建议阅读路径，SummaryView
+  以时间线展示（仅当存在依赖分层时显示）。来源 Understand-Anything tour-generator。
 - **检索质量回归 eval**：`sidecar/retrieval-eval.test.mjs` 用多语言 fixture +
   golden 用例（query→期望文件）跑真实索引，断言 recall@5 ≥ 0.8。离线、零 LLM 依赖，
   防止改分块/打分/符号提取导致检索召回静默退化。

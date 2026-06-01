@@ -83,7 +83,7 @@ const CHAT_MODEL = process.env.RS_CHAT_MODEL ?? SUMMARY_MODEL;
 const SUMMARY_INSTRUCTIONS = `You are RepoSensei. Analyze the given repository and return a single JSON object matching exactly this shape:
 {
   "techStack": string[],
-  "modules": [{ "path": string, "purpose": string, "keyFiles": string[] }],
+  "modules": [{ "path": string, "purpose": string, "keyFiles": string[], "dependsOn": string[] }],
   "entryPoints": string[],
   "overview": string,
   "mermaidArchitecture": string,

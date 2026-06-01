@@ -11,6 +11,8 @@ export interface ModuleSummary {
   path: string;
   purpose: string;
   keyFiles: string[];
+  /** 该模块依赖的其他模块 path（用于生成拓扑学习路径）。可选，旧 summary 无此字段。 */
+  dependsOn?: string[];
 }
 
 export interface ConceptCard {

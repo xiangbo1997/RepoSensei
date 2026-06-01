@@ -36,6 +36,8 @@ const en: Dict = {
   "summary.concepts": "Concepts to learn",
   "summary.concept.found": "Found: {evidence}",
   "summary.concept.learnMore": "Learn more ↗",
+  "summary.tour": "Suggested reading order",
+  "summary.tour.step": "Step {n}",
 
   "chat.title": "Ask the Sensei",
   "chat.hint":
@@ -100,6 +102,8 @@ const zh: Dict = {
   "summary.concepts": "可以顺手学的概念",
   "summary.concept.found": "出现在：{evidence}",
   "summary.concept.learnMore": "去学一下 ↗",
+  "summary.tour": "建议阅读顺序",
+  "summary.tour.step": "第 {n} 步",
 
   "chat.title": "请教师父",
   "chat.hint":

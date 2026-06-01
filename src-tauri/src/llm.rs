@@ -18,6 +18,8 @@ pub struct ModuleSummary {
   pub purpose: String,
   #[serde(rename = "keyFiles")]
   pub key_files: Vec<String>,
+  #[serde(rename = "dependsOn", default)]
+  pub depends_on: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -53,7 +55,7 @@ pub struct ChatMessage {
 const SUMMARY_INSTRUCTIONS_BASE: &str = r#"You are RepoSensei. Analyze the given repository and return a single JSON object matching exactly this shape:
 {
   "techStack": string[],
-  "modules": [{ "path": string, "purpose": string, "keyFiles": string[] }],
+  "modules": [{ "path": string, "purpose": string, "keyFiles": string[], "dependsOn": string[] }],
   "entryPoints": string[],
   "overview": string,
   "mermaidArchitecture": string,
@@ -62,6 +64,7 @@ const SUMMARY_INSTRUCTIONS_BASE: &str = r#"You are RepoSensei. Analyze the given
 
 Rules:
 - Cite real file paths.
+- modules[].dependsOn: other modules' "path" values this module depends on (imports/uses). Use [] if none. This drives a topological learning path, so be accurate about direction (a depends on b means read b first).
 - Mermaid: use `graph LR`, max 12 nodes, group by module.
 - Concept cards: only patterns/libs actually used. Authoritative learnMore URL.
 - Return ONLY the JSON object, no prose, no fences."#;
@@ -326,6 +329,7 @@ fn module_from_value(v: &serde_json::Value) -> Option<ModuleSummary> {
       .unwrap_or("")
       .to_string(),
     key_files: string_array(obj.get("keyFiles")),
+    depends_on: string_array(obj.get("dependsOn")),
   })
 }
 
