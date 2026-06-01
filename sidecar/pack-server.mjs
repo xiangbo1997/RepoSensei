@@ -20,6 +20,12 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import readline from "node:readline";
+import {
+  isGeneratedFile,
+  isNoiseDir,
+  repomixIgnoreGlobs,
+} from "./noise-filter.mjs";
+import { indexProject, searchCode } from "./code-index.mjs";
 
 const rl = readline.createInterface({ input: process.stdin });
 
@@ -60,6 +66,12 @@ async function handle(req) {
   if (req.cmd === "read_file") {
     return readSingleFile(req.args.root, req.args.relative);
   }
+  if (req.cmd === "index_project") {
+    return indexProject(req.args.path);
+  }
+  if (req.cmd === "search_code") {
+    return searchCode(req.args.path, req.args.query, req.args.limit ?? 6);
+  }
   throw new Error(`unknown cmd: ${req.cmd}`);
 }
 
@@ -85,11 +97,14 @@ async function packProject(projectPath) {
 
     try {
       const { runCli } = await import("repomix");
+      // 注入噪音过滤：依赖/构建目录 + 生成文件，避免 protobuf stub / mock /
+      // codegen 输出稀释送给 LLM 的代码信号。与 list_files 的 walk 共用同一份规则。
       const result = await runCli(["."], projectPath, {
         output: outFile,
         style: "xml",
         compress: true,
         quiet: true,
+        ignore: repomixIgnoreGlobs().join(","),
       });
 
       const pack = result?.packResult;
@@ -120,26 +135,6 @@ async function packProject(projectPath) {
 // ─────────────────────────────────────────────────────────────────────────────
 // list_files: enumerate the project file tree (skip .gitignore-style noise)
 // ─────────────────────────────────────────────────────────────────────────────
-
-const IGNORE_DIRS = new Set([
-  "node_modules",
-  ".git",
-  ".next",
-  "dist",
-  "build",
-  "out",
-  "target",
-  ".turbo",
-  ".cache",
-  ".idea",
-  ".vscode",
-  "__pycache__",
-  ".venv",
-  "venv",
-  ".pytest_cache",
-  ".mypy_cache",
-  ".DS_Store",
-]);
 
 const IGNORE_FILES = new Set([
   ".DS_Store",
@@ -173,7 +168,7 @@ async function walk(absDir, relDir, out) {
     if (out.length >= MAX_FILES) return;
     const name = entry.name;
     if (entry.isDirectory()) {
-      if (IGNORE_DIRS.has(name) || name.startsWith(".")) {
+      if (isNoiseDir(name) || name.startsWith(".")) {
         // allow some dot dirs that are useful (e.g. .github)
         if (name !== ".github") continue;
       }
@@ -187,6 +182,9 @@ async function walk(absDir, relDir, out) {
     if (entry.isFile()) {
       if (IGNORE_FILES.has(name)) continue;
       const rel = relDir ? `${relDir}/${name}` : name;
+      // 生成文件（protobuf/codegen/mock）不进文件树——它们无手写逻辑，
+      // 只会让用户在树里翻到一堆 stub。与 repomix 打包过滤保持一致。
+      if (isGeneratedFile(rel)) continue;
       try {
         const s = await stat(path.join(absDir, name));
         if (s.size > 1024 * 1024) continue; // skip files > 1MB

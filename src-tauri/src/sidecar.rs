@@ -43,6 +43,29 @@ pub struct FileContent {
     pub content: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IndexResult {
+    pub root: String,
+    pub files: u32,
+    pub chunks: u32,
+    #[serde(rename = "dbPath")]
+    pub db_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CodeHit {
+    pub path: String,
+    pub score: f64,
+    pub content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SearchResult {
+    pub hits: Vec<CodeHit>,
+    #[serde(default)]
+    pub indexed: bool,
+}
+
 #[derive(Debug, Deserialize)]
 struct SidecarResponse {
     ok: bool,
@@ -130,6 +153,22 @@ pub async fn read_file(root: String, relative: String) -> Result<FileContent, St
     call_sidecar(
         "read_file",
         serde_json::json!({ "root": root, "relative": relative }),
+    )
+    .await
+}
+
+pub async fn index_project(project_path: String) -> Result<IndexResult, String> {
+    call_sidecar("index_project", serde_json::json!({ "path": project_path })).await
+}
+
+pub async fn search_code(
+    project_path: String,
+    query: String,
+    limit: u32,
+) -> Result<SearchResult, String> {
+    call_sidecar(
+        "search_code",
+        serde_json::json!({ "path": project_path, "query": query, "limit": limit }),
     )
     .await
 }

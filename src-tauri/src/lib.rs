@@ -2,11 +2,16 @@ mod llm;
 mod sidecar;
 
 use llm::{ChatMessage, ProjectSummary};
-use sidecar::{FileContent, FileListing, PackedProject};
+use sidecar::{FileContent, FileListing, IndexResult, PackedProject};
 
 #[tauri::command]
 async fn pack_project(path: String) -> Result<PackedProject, String> {
   sidecar::pack_project(path).await
+}
+
+#[tauri::command]
+async fn index_project(path: String) -> Result<IndexResult, String> {
+  sidecar::index_project(path).await
 }
 
 #[tauri::command]
@@ -34,8 +39,17 @@ async fn chat_ask(
   history: Vec<ChatMessage>,
   question: String,
   locale: String,
+  project_root: Option<String>,
 ) -> Result<(), String> {
-  llm::chat_stream(window, &summary, &history, &question, &locale).await
+  llm::chat_stream(
+    window,
+    &summary,
+    &history,
+    &question,
+    &locale,
+    project_root.as_deref(),
+  )
+  .await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -45,6 +59,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .invoke_handler(tauri::generate_handler![
       pack_project,
+      index_project,
       list_files,
       read_file,
       summarize_project,
