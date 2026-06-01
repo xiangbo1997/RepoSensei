@@ -11,79 +11,89 @@ interface Props {
 export function SummaryView({ summary }: Props) {
   const { t } = useT();
   return (
-    <div className="space-y-6">
-      <section>
-        <h2 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+    <div className="space-y-10 py-2">
+      <section className="animate-in" style={{ animationDelay: "0ms" }}>
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-4">
           {t("summary.overview")}
         </h2>
-        <p className="text-slate-800 dark:text-slate-200 leading-relaxed">
+        <p className="text-base text-slate-800 dark:text-slate-200 leading-relaxed font-medium">
           {summary.overview}
         </p>
       </section>
 
-      <section>
-        <h2 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+      <section className="animate-in" style={{ animationDelay: "100ms" }}>
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-4">
           {t("summary.techStack")}
         </h2>
         <div className="flex flex-wrap gap-2">
-          {summary.techStack.map((t) => (
+          {summary.techStack.map((stack) => (
             <span
-              key={t}
-              className="px-2 py-1 text-xs rounded-md bg-amber-100 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-900"
+              key={stack}
+              className="px-3 py-1 text-xs font-bold rounded-full bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-white/5 hover:border-amber-500/30 transition-colors"
             >
-              {t}
+              {stack}
             </span>
           ))}
         </div>
       </section>
 
       {summary.entryPoints.length > 0 && (
-        <section>
-          <h2 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+        <section className="animate-in" style={{ animationDelay: "200ms" }}>
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-4">
             {t("summary.entryPoints")}
           </h2>
-          <ul className="space-y-1">
+          <div className="grid gap-2">
             {summary.entryPoints.map((ep) => (
-              <li
+              <div
                 key={ep}
-                className="font-mono text-sm text-slate-700 dark:text-slate-300"
+                className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/5"
               >
-                · {ep}
-              </li>
+                <span className="text-amber-500">🚀</span>
+                <code className="text-xs font-mono text-slate-700 dark:text-slate-300">
+                  {ep}
+                </code>
+              </div>
             ))}
-          </ul>
+          </div>
         </section>
       )}
 
-      <section>
-        <h2 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+      <section className="animate-in" style={{ animationDelay: "300ms" }}>
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-4">
           {t("summary.architecture")}
         </h2>
-        <MermaidView code={summary.mermaidArchitecture} />
+        <div className="p-4 rounded-2xl bg-white dark:bg-black/20 border border-slate-100 dark:border-white/5 shadow-inner">
+          <MermaidView code={summary.mermaidArchitecture} />
+        </div>
       </section>
 
-      <section>
-        <h2 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+      <section className="animate-in" style={{ animationDelay: "400ms" }}>
+        <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">
           {t("summary.modules")}
         </h2>
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {summary.modules.map((m) => (
             <div
               key={m.path}
-              className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800"
+              className="group p-5 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/5 hover:border-amber-500/50 transition-all duration-300 shadow-sm hover:shadow-xl hover:shadow-amber-500/5 hover:-translate-y-1"
             >
-              <div className="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
-                {m.path}
+              <div className="flex items-center justify-between mb-2">
+                <div className="font-mono text-sm font-bold text-slate-900 dark:text-slate-100 group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                  {m.path}
+                </div>
+                <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono">
+                  {m.keyFiles.length} Files
+                </div>
               </div>
-              <div className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
                 {m.purpose}
               </div>
               {m.keyFiles.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1.5">
                   {m.keyFiles.map((f) => (
                     <span
                       key={f}
-                      className="px-1.5 py-0.5 text-[11px] font-mono rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                      className="px-2 py-0.5 text-[10px] font-mono rounded-lg bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/5"
                     >
                       {f}
                     </span>
@@ -96,33 +106,37 @@ export function SummaryView({ summary }: Props) {
       </section>
 
       {summary.conceptCards.length > 0 && (
-        <section>
-          <h2 className="text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+        <section className="animate-in" style={{ animationDelay: "500ms" }}>
+          <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-6">
             {t("summary.concepts")}
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
             {summary.conceptCards.map((c) => (
               <div
                 key={c.name}
-                className="p-4 rounded-lg bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-200 dark:border-amber-900"
+                className="flex flex-col p-5 rounded-[1.5rem] bg-gradient-to-br from-amber-500/5 to-orange-500/5 dark:from-amber-500/10 dark:to-orange-500/10 border border-amber-500/20 dark:border-amber-500/20 hover:border-amber-500 transition-all duration-300"
               >
-                <div className="font-semibold text-amber-900 dark:text-amber-200">
+                <div className="font-bold text-lg text-amber-900 dark:text-amber-100 mb-1">
                   {c.name}
                 </div>
-                <div className="mt-1 text-sm text-amber-800 dark:text-amber-300">
+                <div className="text-sm text-amber-800 dark:text-amber-300 leading-relaxed mb-4">
                   {c.oneLiner}
                 </div>
-                <div className="mt-2 text-xs text-amber-700 dark:text-amber-400 italic">
-                  {t("summary.concept.found", { evidence: c.evidence })}
+                <div className="mt-auto space-y-3">
+                  <div className="flex items-start gap-2 p-2.5 rounded-xl bg-white/50 dark:bg-black/20 border border-amber-500/10 text-[11px] text-amber-700 dark:text-amber-400 italic leading-snug">
+                    <span className="not-italic">📍</span>
+                    {t("summary.concept.found", { evidence: c.evidence })}
+                  </div>
+                  <a
+                    href={c.learnMore}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all active:scale-95"
+                  >
+                    {t("summary.concept.learnMore")}
+                    <span>↗</span>
+                  </a>
                 </div>
-                <a
-                  href={c.learnMore}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-2 inline-block text-xs text-amber-700 dark:text-amber-400 underline hover:text-amber-900 dark:hover:text-amber-200"
-                >
-                  {t("summary.concept.learnMore")}
-                </a>
               </div>
             ))}
           </div>
