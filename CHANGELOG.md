@@ -28,6 +28,8 @@
 
 ### Changed
 
+- **summarize 内容预算**：超大仓库的打包内容截断到 ~400K 字符（约 100K token）并
+  标注，避免溢出 context window。
 - **LLM JSON 解析容错**：`summarize` 改用四级容错解析
   （`parse_summary_resilient`：去围栏 → 散文中抽取 JSON → 缺字段补默认 → 坏数组项
   逐个丢弃），畸形输出不再整体崩溃。

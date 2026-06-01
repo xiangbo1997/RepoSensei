@@ -181,15 +181,38 @@ fn resolve_config() -> Result<Config, String> {
     Err("No LLM credentials. Set OPENAI_BASE_URL+OPENAI_API_KEY or ANTHROPIC_API_KEY (e.g. via .env.local).".into())
 }
 
+/// summarize 注入仓库内容的字符上限。超大仓库整包送会溢出 context window，
+/// 这里保守截断（约 ~100K token），并标注截断让模型知道是部分内容。
+/// （来源：codegraph 自适应 token 预算思想；后续可结合 RAG 做更精准的内容选择。）
+const SUMMARY_CONTENT_BUDGET: usize = 400_000;
+
 pub async fn summarize(
     packed: &crate::sidecar::PackedProject,
     locale: &str,
 ) -> Result<ProjectSummary, String> {
     let cfg = resolve_config()?;
     let instructions = summary_instructions(locale);
+
+    let (content, truncated) = if packed.content.len() > SUMMARY_CONTENT_BUDGET {
+        // 按字符边界安全截断（content 是 UTF-8，找最近的字符边界）。
+        let mut end = SUMMARY_CONTENT_BUDGET;
+        while end > 0 && !packed.content.is_char_boundary(end) {
+            end -= 1;
+        }
+        (&packed.content[..end], true)
+    } else {
+        (packed.content.as_str(), false)
+    };
+
+    let truncation_note = if truncated {
+        "\n\n[NOTE: repository content truncated to fit context — summarize from what is shown; the codebase is larger.]"
+    } else {
+        ""
+    };
+
     let user_prompt = format!(
-        "<repository name=\"{}\" files=\"{}\">\n{}\n</repository>\n\nProduce the JSON now.",
-        packed.name, packed.files_scanned, packed.content
+        "<repository name=\"{}\" files=\"{}\">\n{}\n</repository>{}\n\nProduce the JSON now.",
+        packed.name, packed.files_scanned, content, truncation_note
     );
 
     let raw = match cfg.provider {
