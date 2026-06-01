@@ -183,6 +183,47 @@ fn resolve_config() -> Result<Config, String> {
   Err("No LLM credentials. Set OPENAI_BASE_URL+OPENAI_API_KEY or ANTHROPIC_API_KEY (e.g. via .env.local).".into())
 }
 
+/// 连接测试：用当前配置发一个最小请求，验证凭据/端点可用。
+/// 返回所用 provider+model 的简短描述（不含 key）。
+pub async fn ping() -> Result<String, String> {
+  let cfg = resolve_config()?;
+  let label = match cfg.provider {
+    Provider::OpenAICompat => format!(
+      "OpenAI-compatible @ {} · {}",
+      cfg.base_url, cfg.summary_model
+    ),
+    Provider::Anthropic => format!("Anthropic · {}", cfg.summary_model),
+  };
+  // 发一个 1-token 请求探活；非流式。
+  let probe = match cfg.provider {
+    Provider::OpenAICompat => {
+      openai_chat(
+        &cfg,
+        false,
+        &cfg.summary_model,
+        "ping",
+        "Reply with: ok",
+        &[],
+        None,
+      )
+      .await
+    }
+    Provider::Anthropic => {
+      anthropic_chat(
+        &cfg,
+        false,
+        &cfg.summary_model,
+        "ping",
+        "Reply with: ok",
+        &[],
+        None,
+      )
+      .await
+    }
+  };
+  probe.map(|_| label)
+}
+
 /// summarize 注入仓库内容的字符上限。超大仓库整包送会溢出 context window，
 /// 这里保守截断（约 ~100K token），并标注截断让模型知道是部分内容。
 /// （来源：codegraph 自适应 token 预算思想；后续可结合 RAG 做更精准的内容选择。）

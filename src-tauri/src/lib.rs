@@ -1,4 +1,5 @@
 mod llm;
+mod settings;
 mod sidecar;
 
 use llm::{ChatMessage, ProjectSummary};
@@ -66,6 +67,12 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_opener::init())
     .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_store::Builder::default().build())
+    .setup(|app| {
+      // 启动时把已保存的 BYOK 设置加载进进程 env，供 resolve_config 读取。
+      settings::apply_to_env(app.handle());
+      Ok(())
+    })
     .invoke_handler(tauri::generate_handler![
       pack_project,
       index_project,
@@ -74,6 +81,9 @@ pub fn run() {
       read_file,
       summarize_project,
       chat_ask,
+      settings::get_settings,
+      settings::save_settings,
+      settings::test_connection,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

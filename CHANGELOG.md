@@ -9,6 +9,10 @@
 
 ### Added
 
+- **BYOK 设置面板**：用 `tauri-plugin-store` 持久化 provider/key/baseUrl/model 到本地
+  app 数据目录；前端齿轮入口打开设置面板（选 provider、填 key、测试连接）；启动时与
+  保存后把设置写进进程 env，`resolve_config` 无需改动即读到（优先级 store/env >
+  .env.local）。key 脱敏不回传前端、不写日志。非技术用户也能配置，无需手改 .env.local。
 - **拓扑学习路径（Tour）**：summary 新增 `modules[].dependsOn`（LLM 给出模块依赖），
   前端 `lib/tour.ts` 用 Kahn 拓扑排序生成「按依赖顺序」的建议阅读路径，SummaryView
   以时间线展示（仅当存在依赖分层时显示）。来源 Understand-Anything tour-generator。

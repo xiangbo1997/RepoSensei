@@ -7,6 +7,7 @@ import { CodeSearch } from "@/components/CodeSearch";
 import { CodeViewer } from "@/components/CodeViewer";
 import { FileTree } from "@/components/FileTree";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { SettingsPanel } from "@/components/SettingsPanel";
 import { SummaryView } from "@/components/SummaryView";
 import type { FileEntry, FileListing } from "@/lib/file-tree";
 import { languageForPath } from "@/lib/file-tree";
@@ -32,6 +33,7 @@ export default function Home() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const chatRef = useRef<ChatPanelHandle | null>(null);
 
   const reset = useCallback(() => {
@@ -161,14 +163,40 @@ export default function Home() {
               {t("header.newProject")}
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            title={t("settings.title")}
+            className="text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              role="img"
+              aria-label={t("settings.title")}
+            >
+              <title>{t("settings.title")}</title>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
           <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-1" />
           <LocaleSwitcher />
         </div>
       </header>
 
+      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+
       <div className="flex-1 min-h-0 overflow-hidden relative z-10">
         {stage === "idle" && (
-          <div className="h-full flex items-center justify-center p-8 animate-in">
+          <div className="h-full flex flex-col items-center justify-center gap-5 p-8 animate-in">
             <button
               type="button"
               onClick={handlePick}
@@ -186,6 +214,13 @@ export default function Home() {
                 </div>
               </div>
               <div className="absolute inset-0 rounded-[2.5rem] ring-1 ring-inset ring-slate-900/5 dark:ring-white/5 pointer-events-none" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setSettingsOpen(true)}
+              className="text-xs text-slate-400 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+            >
+              ⚙️ {t("settings.needed")}
             </button>
           </div>
         )}

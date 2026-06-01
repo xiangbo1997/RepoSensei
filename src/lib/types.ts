@@ -45,6 +45,17 @@ export interface SearchResult {
   hybrid?: boolean;
 }
 
+export type LlmProvider = "anthropic" | "openai";
+
+export interface SettingsView {
+  provider: LlmProvider | "";
+  baseUrl: string;
+  summaryModel: string;
+  chatModel: string;
+  hasKey: boolean;
+  keyHint: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant";
   content: string;

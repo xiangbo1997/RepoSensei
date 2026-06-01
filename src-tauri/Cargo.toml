@@ -28,6 +28,7 @@ reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], defau
 futures-util = "0.3"
 anyhow = "1"
 thiserror = "2"
+tauri-plugin-store = "2.4.3"
 
 [lints.rust]
 unsafe_code = "forbid"
