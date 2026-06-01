@@ -124,17 +124,29 @@ async function collectFiles(root) {
   return out;
 }
 
-/** 打开（或新建）索引 db，建表。 */
+// schema 版本：列结构变更时递增，旧索引会被丢弃重建，避免列数不匹配的 INSERT 失败。
+const SCHEMA_VERSION = "2";
+
+/** 打开（或新建）索引 db，建表。若 schema 版本不符则清空重建。 */
 function openDb(dbFile) {
   const db = new DatabaseSync(dbFile);
   db.exec(`
     CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+  `);
+  const row = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
+  if (row?.value !== SCHEMA_VERSION) {
+    // 旧版本（或首次）：丢弃可能存在的旧表，按新 schema 重建。
+    db.exec("DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS files;");
+  }
+  db.exec(`
     CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, hash TEXT NOT NULL);
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
       path, symbols, content,
+      start_line UNINDEXED, end_line UNINDEXED,
       tokenize = 'unicode61'
     );
   `);
+  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schemaVersion', ?)").run(SCHEMA_VERSION);
   return db;
 }
 
@@ -165,7 +177,7 @@ export async function indexProject(projectPath) {
     const seen = new Set();
 
     const insertChunk = db.prepare(
-      "INSERT INTO chunks (path, symbols, content) VALUES (?, ?, ?)",
+      "INSERT INTO chunks (path, symbols, content, start_line, end_line) VALUES (?, ?, ?, ?, ?)",
     );
     const deleteChunks = db.prepare("DELETE FROM chunks WHERE path = ?");
     const upsertFile = db.prepare(
@@ -213,7 +225,7 @@ export async function indexProject(projectPath) {
         deleteChunks.run(rel);
         const content = buf.toString("utf8");
         for (const c of chunkFile(rel, content)) {
-          insertChunk.run(c.path, c.symbols, c.content);
+          insertChunk.run(c.path, c.symbols, c.content, c.startLine, c.endLine);
           chunkCount++;
         }
         upsertFile.run(rel, hash);
@@ -347,7 +359,7 @@ export async function searchCode(projectPath, question, limit = 6) {
     // bm25 列权重：symbols 列最高（5），path 次之（2），content（1）。
     // 先用 FTS 取较宽候选集（limit*4），再用多信号重排，最后截断。
     const stmt = db.prepare(`
-      SELECT path, content, bm25(chunks, 2.0, 5.0, 1.0) AS rank
+      SELECT path, content, start_line, end_line, bm25(chunks, 2.0, 5.0, 1.0) AS rank
       FROM chunks
       WHERE chunks MATCH ?
       ORDER BY rank
@@ -380,7 +392,17 @@ export async function searchCode(projectPath, question, limit = 6) {
           const ext = r.path.split(".").pop()?.toLowerCase() ?? "";
           kindPass = kinds.some((k) => ext === k || langAlias(k) === ext);
         }
-        return { hit: { path: r.path, score, content: r.content }, pathFilterPass, kindPass };
+        return {
+          hit: {
+            path: r.path,
+            score,
+            content: r.content,
+            startLine: Number(r.start_line),
+            endLine: Number(r.end_line),
+          },
+          pathFilterPass,
+          kindPass,
+        };
       })
       .filter((x) => x.pathFilterPass && x.kindPass)
       .map((x) => x.hit)

@@ -9,6 +9,9 @@
 
 ### Added
 
+- **检索结果带行号溯源**：FTS5 索引存 `start_line`/`end_line`（UNINDEXED），检索
+  返回行号，grounding 注入按 `file:line` 标注，Q&A 回答可给出可溯源引用。索引加
+  schema 版本守卫，升级时自动重建旧索引。
 - **代码检索 grounding Q&A**：新增 `sidecar/code-index.mjs`，用 `node:sqlite`
   FTS5 建代码检索索引（行级分块 + 正则符号加权）。Q&A 提问前检索真实源码片段
   注入 prompt，回答从「仅靠 summary 猜测」升级为「引用真实源码」。见

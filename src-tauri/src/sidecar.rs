@@ -57,6 +57,10 @@ pub struct CodeHit {
     pub path: String,
     pub score: f64,
     pub content: String,
+    #[serde(rename = "startLine", default)]
+    pub start_line: u32,
+    #[serde(rename = "endLine", default)]
+    pub end_line: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

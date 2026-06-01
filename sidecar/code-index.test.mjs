@@ -102,6 +102,13 @@ describe("searchCode", () => {
     const { hits } = await searchCode(projectDir, "authenticateUser", 5);
     expect(hits[0].path).toBe("src/auth.ts");
   });
+
+  test("检索结果带行号（可溯源）", async () => {
+    await indexProject(projectDir);
+    const { hits } = await searchCode(projectDir, "authenticateUser", 5);
+    expect(hits[0].startLine).toBeGreaterThanOrEqual(1);
+    expect(hits[0].endLine).toBeGreaterThanOrEqual(hits[0].startLine);
+  });
 });
 
 describe("增量索引", () => {

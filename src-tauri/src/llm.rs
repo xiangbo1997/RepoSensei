@@ -399,9 +399,15 @@ async fn build_grounding_block(project_root: &str, question: &str) -> String {
     );
     let mut used = 0usize;
     for hit in &result.hits {
+        // 带 file:line 标注，便于模型在回答里给出可溯源的引用。
+        let location = if hit.start_line > 0 {
+            format!("{}:{}-{}", hit.path, hit.start_line, hit.end_line)
+        } else {
+            hit.path.clone()
+        };
         let snippet = format!(
             "\n--- {} ---\n```\n{}\n```\n",
-            hit.path,
+            location,
             hit.content.trim_end()
         );
         if used + snippet.len() > GROUNDING_CHAR_BUDGET {
