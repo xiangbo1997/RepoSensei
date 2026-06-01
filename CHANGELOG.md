@@ -9,6 +9,10 @@
 
 ### Added
 
+- **Hybrid 检索（FTS5 + 向量语义 + RRF）**：embedding 复用 BYOK 的 OpenAI 兼容
+  `/embeddings` 端点（`text-embedding-3-small`），索引时为 chunk 算向量存 SQLite
+  BLOB，检索时 query 向量化算余弦，与 FTS5 BM25 排名用 RRF 融合。无 embedding 端点
+  （如 Anthropic-only）时自动降级纯 FTS5。新增 `sidecar/embeddings.mjs`。
 - **代码搜索面板**：`search_code` 暴露为 Tauri command，左栏新增搜索框（防抖），
   结果按 `path:line` 展示并可点击跳转到 CodeViewer。让已建的 FTS5 索引直接服务
   用户检索，不再只隐式服务 Q&A。Q&A 系统提示新增显式 `file:line` 引用要求。

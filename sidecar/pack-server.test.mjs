@@ -80,7 +80,7 @@ describe("sidecar 协议契约", () => {
   test("index_project 返回计数字段（Rust IndexResult 契约）", async () => {
     const r = await callSidecar("index_project", { path: projectDir });
     expect(r.ok).toBe(true);
-    for (const key of ["root", "files", "chunks", "reused", "reindexed", "removed", "dbPath"]) {
+    for (const key of ["root", "files", "chunks", "reused", "reindexed", "removed", "embedded", "dbPath"]) {
       expect(r.data, `缺字段 ${key}`).toHaveProperty(key);
     }
   });

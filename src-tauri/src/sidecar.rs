@@ -48,6 +48,14 @@ pub struct IndexResult {
   pub root: String,
   pub files: u32,
   pub chunks: u32,
+  #[serde(default)]
+  pub reused: u32,
+  #[serde(default)]
+  pub reindexed: u32,
+  #[serde(default)]
+  pub removed: u32,
+  #[serde(default)]
+  pub embedded: u32,
   #[serde(rename = "dbPath")]
   pub db_path: String,
 }
@@ -68,6 +76,8 @@ pub struct SearchResult {
   pub hits: Vec<CodeHit>,
   #[serde(default)]
   pub indexed: bool,
+  #[serde(default)]
+  pub hybrid: bool,
 }
 
 #[derive(Debug, Deserialize)]

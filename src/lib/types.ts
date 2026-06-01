@@ -40,6 +40,7 @@ export interface CodeHit {
 export interface SearchResult {
   hits: CodeHit[];
   indexed: boolean;
+  hybrid?: boolean;
 }
 
 export interface ChatMessage {

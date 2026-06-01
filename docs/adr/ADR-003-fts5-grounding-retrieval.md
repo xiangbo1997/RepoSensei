@@ -39,5 +39,13 @@
 - ✅ 零额外 npm 依赖（`node:sqlite` 内置），本地运行。
 - ✅ 增量索引让重复导入只重建变更文件。
 - ⚠️ 符号提取是正则近似，复杂语法可能漏提（后续可升级 tree-sitter）。
-- ⚠️ 无语义相似检索（如「鉴权逻辑在哪」未含关键词时召回弱）——后续上向量 + RRF 融合（Hybrid Search）。
 - ⚠️ `node:sqlite` 在当前 Node 标记为 experimental，会打印警告——已知可接受。
+
+## 更新（2026-06-01）：Hybrid 检索落地
+
+已补齐向量语义臂：embedding 复用 BYOK 的 OpenAI 兼容 `/embeddings`
+（`sidecar/embeddings.mjs`），索引时为每个 chunk 算向量存 SQLite BLOB（`vectors`
+表，rowid 对应 chunk）。检索改为双臂：FTS5 BM25 多信号重排 + query 向量余弦，
+两臂排名用 **RRF**（`1/(k+rank)`，k=60）融合。无 embedding 端点时 `vectors` 表为空，
+检索自动退回纯 FTS5（降级安全）。embedding 在索引事务**外**批量执行，避免在
+`node:sqlite` 同步事务里 await 网络。

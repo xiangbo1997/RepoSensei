@@ -18,6 +18,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { isGeneratedFile, isNoiseDir } from "./noise-filter.mjs";
+import {
+  blobToVector,
+  cosineSimilarity,
+  embedBatch,
+  embedOne,
+  embeddingAvailable,
+  vectorToBlob,
+} from "./embeddings.mjs";
+
+const EMBED_BATCH = 64; // 每批送多少 chunk 去算向量
+const RRF_K = 60; // RRF 常数（ai-eng/codegraph 通用默认）
 
 const CHUNK_LINES = 40; // 每块行数
 const CHUNK_OVERLAP = 8; // 相邻块重叠行数，避免边界切断逻辑
@@ -125,7 +136,7 @@ async function collectFiles(root) {
 }
 
 // schema 版本：列结构变更时递增，旧索引会被丢弃重建，避免列数不匹配的 INSERT 失败。
-const SCHEMA_VERSION = "2";
+const SCHEMA_VERSION = "3";
 
 /** 打开（或新建）索引 db，建表。若 schema 版本不符则清空重建。 */
 function openDb(dbFile) {
@@ -136,7 +147,7 @@ function openDb(dbFile) {
   const row = db.prepare("SELECT value FROM meta WHERE key = 'schemaVersion'").get();
   if (row?.value !== SCHEMA_VERSION) {
     // 旧版本（或首次）：丢弃可能存在的旧表，按新 schema 重建。
-    db.exec("DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS files;");
+    db.exec("DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS vectors;");
   }
   db.exec(`
     CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, hash TEXT NOT NULL);
@@ -145,6 +156,9 @@ function openDb(dbFile) {
       start_line UNINDEXED, end_line UNINDEXED,
       tokenize = 'unicode61'
     );
+    -- 向量表：rowid 对应 chunks 的 rowid，vec 是 Float32 BLOB。
+    -- embedding 不可用时该表为空，检索自动降级纯 FTS5。
+    CREATE TABLE IF NOT EXISTS vectors (rowid INTEGER PRIMARY KEY, vec BLOB NOT NULL);
   `);
   db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schemaVersion', ?)").run(SCHEMA_VERSION);
   return db;
@@ -180,6 +194,8 @@ export async function indexProject(projectPath) {
       "INSERT INTO chunks (path, symbols, content, start_line, end_line) VALUES (?, ?, ?, ?, ?)",
     );
     const deleteChunks = db.prepare("DELETE FROM chunks WHERE path = ?");
+    const deleteVec = db.prepare("DELETE FROM vectors WHERE rowid = ?");
+    const selectRowids = db.prepare("SELECT rowid FROM chunks WHERE path = ?");
     const upsertFile = db.prepare(
       "INSERT OR REPLACE INTO files (path, hash) VALUES (?, ?)",
     );
@@ -190,6 +206,8 @@ export async function indexProject(projectPath) {
     let reused = 0;
     let reindexed = 0;
     let removed = 0;
+    // 待向量化的 chunk：事务提交后在事务外批量 embed（不能在 SQLite 同步事务里 await 网络）。
+    const pendingEmbed = [];
 
     db.exec("BEGIN");
     try {
@@ -214,18 +232,24 @@ export async function indexProject(projectPath) {
         seen.add(rel);
         const hash = createHash("sha256").update(buf).digest("hex");
 
-        // 内容未变 → 跳过重建，保留旧 chunks。
+        // 内容未变 → 跳过重建，保留旧 chunks 与向量。
         if (prevHashes.get(rel) === hash) {
           reused++;
           indexedFiles++;
           continue;
         }
 
-        // 变更/新增 → 删旧块、重建。
+        // 变更/新增 → 先删旧块对应的向量，再删旧块、重建。
+        for (const r of selectRowids.all(rel)) {
+          deleteVec.run(r.rowid);
+        }
         deleteChunks.run(rel);
         const content = buf.toString("utf8");
         for (const c of chunkFile(rel, content)) {
           insertChunk.run(c.path, c.symbols, c.content, c.startLine, c.endLine);
+          const rowid = Number(db.prepare("SELECT last_insert_rowid() AS id").get().id);
+          // 向量化输入加上文件路径前缀，帮助语义检索区分同名符号。
+          pendingEmbed.push({ rowid, text: `${c.path}\n${c.content}` });
           chunkCount++;
         }
         upsertFile.run(rel, hash);
@@ -233,9 +257,12 @@ export async function indexProject(projectPath) {
         indexedFiles++;
       }
 
-      // 已从磁盘删除的文件 → 清理其 chunks 与记录。
+      // 已从磁盘删除的文件 → 清理其 chunks、向量与记录。
       for (const oldPath of prevHashes.keys()) {
         if (!seen.has(oldPath)) {
+          for (const r of selectRowids.all(oldPath)) {
+            deleteVec.run(r.rowid);
+          }
           deleteChunks.run(oldPath);
           deleteFile.run(oldPath);
           removed++;
@@ -245,6 +272,31 @@ export async function indexProject(projectPath) {
     } catch (e) {
       db.exec("ROLLBACK");
       throw e;
+    }
+
+    // 事务外：批量算向量并写入（embedding 是网络 async，不能在同步事务里 await）。
+    // 无 embedding 端点或失败 → vectors 表留空，检索降级纯 FTS5。
+    let embedded = 0;
+    if (pendingEmbed.length > 0 && embeddingAvailable()) {
+      const insertVec = db.prepare(
+        "INSERT OR REPLACE INTO vectors (rowid, vec) VALUES (?, ?)",
+      );
+      for (let i = 0; i < pendingEmbed.length; i += EMBED_BATCH) {
+        const batch = pendingEmbed.slice(i, i + EMBED_BATCH);
+        const vectors = await embedBatch(batch.map((b) => b.text));
+        if (!vectors) break; // 失败即停，已写入的保留，其余降级 FTS5
+        db.exec("BEGIN");
+        try {
+          for (let j = 0; j < batch.length; j++) {
+            insertVec.run(batch[j].rowid, vectorToBlob(vectors[j]));
+            embedded++;
+          }
+          db.exec("COMMIT");
+        } catch (e) {
+          db.exec("ROLLBACK");
+          throw e;
+        }
+      }
     }
 
     const setMeta = db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)");
@@ -258,6 +310,7 @@ export async function indexProject(projectPath) {
       reused,
       reindexed,
       removed,
+      embedded,
       dbPath: dbFile,
     };
   } finally {
@@ -356,60 +409,96 @@ export async function searchCode(projectPath, question, limit = 6) {
 
   const db = new DatabaseSync(dbFile, { readOnly: true });
   try {
-    // bm25 列权重：symbols 列最高（5），path 次之（2），content（1）。
-    // 先用 FTS 取较宽候选集（limit*4），再用多信号重排，最后截断。
+    const wide = Math.max(limit * 4, 24);
+
+    // ── FTS5 臂：bm25 + 多信号重排 ──────────────────────────────────
     const stmt = db.prepare(`
-      SELECT path, content, start_line, end_line, bm25(chunks, 2.0, 5.0, 1.0) AS rank
+      SELECT rowid, path, content, start_line, end_line, bm25(chunks, 2.0, 5.0, 1.0) AS rank
       FROM chunks
       WHERE chunks MATCH ?
       ORDER BY rank
       LIMIT ?
     `);
-    const candidates = stmt.all(ftsQuery, Math.max(limit * 4, 24));
+    const candidates = stmt.all(ftsQuery, wide);
 
     const lowTokens = tokens.map((t) => t.toLowerCase());
-    const reranked = candidates
+    const passesFilters = (r) => {
+      const pathLow = r.path.toLowerCase();
+      for (const pf of pathFilters) {
+        if (!pathLow.includes(pf.toLowerCase())) return false;
+      }
+      if (kinds.length > 0) {
+        const ext = r.path.split(".").pop()?.toLowerCase() ?? "";
+        if (!kinds.some((k) => ext === k || langAlias(k) === ext)) return false;
+      }
+      return true;
+    };
+
+    const ftsRanked = candidates
+      .filter(passesFilters)
       .map((r) => {
-        let score = -Number(r.rank); // bm25 基础分（越大越相关）
+        let score = -Number(r.rank);
         const pathLow = r.path.toLowerCase();
         const contentLow = r.content.toLowerCase();
-        // 多信号加成（来源：codegraph 多信号重排）：
         for (const t of lowTokens) {
-          // 文件名/路径含 token → 强相关
           if (pathLow.includes(t)) score += 8;
-          // 内容里整词出现（非前缀）→ 比模糊前缀更可信
           if (new RegExp(`\\b${escapeRegex(t)}\\b`).test(contentLow)) score += 4;
         }
-        // path: 限定符：命中则大幅提权，未命中则排除
-        let pathFilterPass = true;
         for (const pf of pathFilters) {
           if (pathLow.includes(pf.toLowerCase())) score += 15;
-          else pathFilterPass = false;
         }
-        // kind:/lang: 限定符：按扩展名近似匹配
-        let kindPass = true;
-        if (kinds.length > 0) {
-          const ext = r.path.split(".").pop()?.toLowerCase() ?? "";
-          kindPass = kinds.some((k) => ext === k || langAlias(k) === ext);
-        }
-        return {
-          hit: {
-            path: r.path,
-            score,
-            content: r.content,
-            startLine: Number(r.start_line),
-            endLine: Number(r.end_line),
-          },
-          pathFilterPass,
-          kindPass,
-        };
+        return { row: r, ftsScore: score };
       })
-      .filter((x) => x.pathFilterPass && x.kindPass)
-      .map((x) => x.hit)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+      .sort((a, b) => b.ftsScore - a.ftsScore);
 
-    return { hits: reranked, indexed: true };
+    // ── 向量臂：query embedding × 全库向量余弦（仅当有向量且 embedding 可用）──
+    let vecRanked = [];
+    const hasVectors =
+      db.prepare("SELECT count(*) AS n FROM vectors").get().n > 0;
+    if (hasVectors && embeddingAvailable()) {
+      const qvec = await embedOne(question);
+      if (qvec) {
+        const rows = db
+          .prepare(
+            `SELECT c.rowid AS rowid, c.path AS path, c.content AS content,
+                    c.start_line AS start_line, c.end_line AS end_line, v.vec AS vec
+             FROM vectors v JOIN chunks c ON c.rowid = v.rowid`,
+          )
+          .all();
+        vecRanked = rows
+          .filter(passesFilters)
+          .map((r) => ({ row: r, sim: cosineSimilarity(qvec, blobToVector(r.vec)) }))
+          .sort((a, b) => b.sim - a.sim)
+          .slice(0, wide);
+      }
+    }
+
+    // ── RRF 融合：两臂排名各取 1/(k+rank) 相加（来源 ai-eng advanced-rag）──
+    const fused = new Map(); // rowid -> { row, score }
+    const addRanks = (ranked) => {
+      ranked.forEach((entry, idx) => {
+        const rowid = entry.row.rowid;
+        const prev = fused.get(rowid);
+        const contrib = 1 / (RRF_K + idx + 1);
+        if (prev) prev.score += contrib;
+        else fused.set(rowid, { row: entry.row, score: contrib });
+      });
+    };
+    addRanks(ftsRanked);
+    addRanks(vecRanked);
+
+    const hits = [...fused.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ row, score }) => ({
+        path: row.path,
+        score,
+        content: row.content,
+        startLine: Number(row.start_line),
+        endLine: Number(row.end_line),
+      }));
+
+    return { hits, indexed: true, hybrid: vecRanked.length > 0 };
   } finally {
     db.close();
   }
