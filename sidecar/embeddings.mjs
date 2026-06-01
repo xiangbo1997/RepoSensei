@@ -38,6 +38,9 @@ function loadDotEnv() {
  * @returns {{baseUrl:string, apiKey:string, model:string} | null}
  */
 export function embeddingConfig() {
+  // 显式关闭开关：强制纯本地 FTS5（不发任何 embedding 请求）。
+  // 用于离线/确定性测试，也给想要「绝不外发」的用户一个硬开关。
+  if (process.env.RS_DISABLE_EMBEDDINGS === "1") return null;
   loadDotEnv();
   const base = process.env.OPENAI_BASE_URL;
   const key = process.env.OPENAI_API_KEY;

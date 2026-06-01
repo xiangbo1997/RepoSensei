@@ -1,3 +1,6 @@
+// 离线确定性：spawn 的 sidecar 子进程继承此 env → 纯 FTS5，不发 embedding 请求。
+process.env.RS_DISABLE_EMBEDDINGS = "1";
+
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";

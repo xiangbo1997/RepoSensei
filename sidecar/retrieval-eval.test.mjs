@@ -7,6 +7,9 @@
  *
  * 这里用一个自包含的小型「多语言仓库」fixture 保证确定性；扩展时往 GOLDEN 加用例即可。
  */
+// 离线确定性：强制纯 FTS5，不发 embedding 请求（须在 import 前设置）。
+process.env.RS_DISABLE_EMBEDDINGS = "1";
+
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";

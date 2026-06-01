@@ -1,3 +1,6 @@
+// 离线确定性：强制纯 FTS5，不触发真实 embedding 网络请求（须在 import 前设置）。
+process.env.RS_DISABLE_EMBEDDINGS = "1";
+
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
