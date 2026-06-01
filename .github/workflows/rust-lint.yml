@@ -11,10 +11,9 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  # 项目 .cargo/config.toml 把 crates-io 替换为 rsproxy.cn（利于国内本地开发），
-  # 但 GitHub 海外 runner 拉该镜像不稳定（failed to get anyhow）。在 CI 用 env
-  # 把 "rsproxy-sparse" 这个 source 指回官方 sparse 源，绕过镜像、不改仓库配置。
-  CARGO_SOURCE_RSPROXY_SPARSE_REGISTRY: "sparse+https://index.crates.io/"
+  # 网络抖动重试（海外 runner 拉 crates.io 偶发失败）。
+  CARGO_NET_RETRY: "5"
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
 
 jobs:
   rust-linting:
@@ -42,6 +41,12 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             lld
+
+      # 移除项目 .cargo/config.toml（指向 rsproxy.cn 国内镜像，海外 runner 拉取
+      # 不稳定）。CI checkout 是一次性的，删除不影响仓库；cargo 改用默认 crates.io。
+      - name: Use default crates.io registry (drop project mirror config)
+        shell: bash
+        run: rm -f .cargo/config.toml
 
       - name: Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
