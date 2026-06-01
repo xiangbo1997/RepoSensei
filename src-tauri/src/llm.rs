@@ -594,8 +594,7 @@ async fn openai_chat(
   while let Some(chunk) = stream_resp.next().await {
     let bytes = chunk.map_err(|e| format!("stream chunk failed: {e}"))?;
     buf.push_str(&String::from_utf8_lossy(&bytes));
-    loop {
-      let Some(nl) = buf.find('\n') else { break };
+    while let Some(nl) = buf.find('\n') {
       let line = buf[..nl].trim().to_string();
       buf.drain(..=nl);
       let Some(payload) = line.strip_prefix("data: ") else {
@@ -717,8 +716,7 @@ async fn anthropic_chat(
   while let Some(chunk) = stream_resp.next().await {
     let bytes = chunk.map_err(|e| format!("stream chunk failed: {e}"))?;
     buf.push_str(&String::from_utf8_lossy(&bytes));
-    loop {
-      let Some(nl) = buf.find('\n') else { break };
+    while let Some(nl) = buf.find('\n') {
       let line = buf[..nl].trim().to_string();
       buf.drain(..=nl);
       let Some(payload) = line.strip_prefix("data: ") else {

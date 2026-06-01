@@ -73,8 +73,8 @@ if [ "$FRONT_ONLY" -eq 0 ]; then
   if [ "$QUICK" -eq 1 ]; then
     skip_phase "Rust clippy" "--quick"
   else
-    # clippy 仅作为告警门禁（不 -D warnings，避免既有风格 nit 阻断验证）。
-    run_phase "Rust clippy" bash -c "cd src-tauri && cargo clippy"
+    # 与 CI rust-lint 完全对齐：--all-targets --all-features（CI 把 clippy 警告当 error）。
+    run_phase "Rust clippy" bash -c "cd src-tauri && cargo clippy --all-targets --all-features"
   fi
 else
   skip_phase "Rust" "--front-only"
