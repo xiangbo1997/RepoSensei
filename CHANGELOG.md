@@ -9,6 +9,9 @@
 
 ### Added
 
+- **检索质量回归 eval**：`sidecar/retrieval-eval.test.mjs` 用多语言 fixture +
+  golden 用例（query→期望文件）跑真实索引，断言 recall@5 ≥ 0.8。离线、零 LLM 依赖，
+  防止改分块/打分/符号提取导致检索召回静默退化。
 - **Hybrid 检索（FTS5 + 向量语义 + RRF）**：embedding 复用 BYOK 的 OpenAI 兼容
   `/embeddings` 端点（`text-embedding-3-small`），索引时为 chunk 算向量存 SQLite
   BLOB，检索时 query 向量化算余弦，与 FTS5 BM25 排名用 RRF 融合。无 embedding 端点
