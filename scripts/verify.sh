@@ -66,6 +66,8 @@ fi
 
 # ── Rust ─────────────────────────────────────────────────
 if [ "$FRONT_ONLY" -eq 0 ]; then
+  # 与 CI 对齐：fmt --check 是 rust-lint workflow 的硬门禁。
+  run_phase "Rust fmt (cargo)" bash -c "cd src-tauri && cargo fmt --all -- --check"
   run_phase "Rust check (cargo)" bash -c "cd src-tauri && cargo check"
   run_phase "Rust tests (cargo)" bash -c "cd src-tauri && cargo test --lib"
   if [ "$QUICK" -eq 1 ]; then
