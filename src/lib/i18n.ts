@@ -49,6 +49,8 @@ const en: Dict = {
 
   "mermaid.failed": "Mermaid render failed — show source",
 
+  "panel.files": "Files",
+  "panel.chat": "Sensei",
   "tree.title": "Files",
   "tree.search": "Filter files…",
   "tree.empty": "No files",
@@ -137,6 +139,8 @@ const zh: Dict = {
 
   "mermaid.failed": "Mermaid 渲染失败 — 查看源码",
 
+  "panel.files": "文件",
+  "panel.chat": "师父",
   "tree.title": "文件树",
   "tree.search": "过滤文件…",
   "tree.empty": "没有文件",

@@ -7,6 +7,7 @@ import { CodeSearch } from "@/components/CodeSearch";
 import { CodeViewer } from "@/components/CodeViewer";
 import { FileTree } from "@/components/FileTree";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { ResizablePanels } from "@/components/ResizablePanels";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SummaryView } from "@/components/SummaryView";
 import type { FileEntry, FileListing } from "@/lib/file-tree";
@@ -272,46 +273,52 @@ export default function Home() {
         )}
 
         {stage === "ready" && summary && packed && projectRoot && (
-          <div className="h-full grid grid-cols-[260px_minmax(0,1fr)_380px] gap-4 p-4 min-h-0 animate-in">
-            <div className="min-h-0 flex flex-col gap-3">
-              <div className="shrink-0 p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-2xl shadow-sm">
-                <CodeSearch
-                  projectRoot={projectRoot}
-                  onSelectFile={setSelectedFile}
-                />
-              </div>
-              <div className="flex-1 min-h-0">
-                <FileTree
-                  files={files}
-                  selected={selectedFile}
-                  onSelect={setSelectedFile}
-                />
-              </div>
-            </div>
-
-            <div className="min-h-0 flex flex-col gap-4">
-              {summaryOpen && (
-                <div className="max-h-[45%] overflow-auto p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none">
-                  <SummaryView summary={summary} />
+          <div className="h-full min-h-0 animate-in">
+            <ResizablePanels
+              leftLabel={t("panel.files")}
+              rightLabel={t("panel.chat")}
+              left={
+                <div className="h-full min-h-0 flex flex-col gap-3">
+                  <div className="shrink-0 p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-2xl shadow-sm">
+                    <CodeSearch
+                      projectRoot={projectRoot}
+                      onSelectFile={setSelectedFile}
+                    />
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <FileTree
+                      files={files}
+                      selected={selectedFile}
+                      onSelect={setSelectedFile}
+                    />
+                  </div>
                 </div>
-              )}
-              <div className="flex-1 min-h-0">
-                <CodeViewer
+              }
+              center={
+                <div className="h-full min-h-0 flex flex-col gap-4">
+                  {summaryOpen && (
+                    <div className="max-h-[45%] overflow-auto p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none">
+                      <SummaryView summary={summary} />
+                    </div>
+                  )}
+                  <div className="flex-1 min-h-0">
+                    <CodeViewer
+                      projectRoot={projectRoot}
+                      selectedFile={selectedFile}
+                      onAskAboutFile={handleAskAboutFile}
+                      onAskAboutCode={handleAskAboutCode}
+                    />
+                  </div>
+                </div>
+              }
+              right={
+                <ChatPanel
+                  ref={chatRef}
+                  summary={summary}
                   projectRoot={projectRoot}
-                  selectedFile={selectedFile}
-                  onAskAboutFile={handleAskAboutFile}
-                  onAskAboutCode={handleAskAboutCode}
                 />
-              </div>
-            </div>
-
-            <div className="min-h-0">
-              <ChatPanel
-                ref={chatRef}
-                summary={summary}
-                projectRoot={projectRoot}
-              />
-            </div>
+              }
+            />
           </div>
         )}
       </div>

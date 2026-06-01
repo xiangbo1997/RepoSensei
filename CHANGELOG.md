@@ -9,6 +9,21 @@
 
 ### Added
 
+- **三栏可折叠 + 可拖拽布局**：`ResizablePanels` 组件（VS Code 风格 split-pane）。
+  左(文件树)/右(聊天)可折叠成窄条、可拖拽分隔条改宽；中间(代码)弹性主区——任一侧
+  收起空间自动归中间，两侧都收起时中间独占全部。宽度+折叠态持久化 localStorage。
+- **`RS_DISABLE_EMBEDDINGS` 开关**：强制纯本地 FTS5、不发任何 embedding 请求
+  （离线确定性测试 + 给「绝不外发」用户的硬开关）。
+
+### Fixed
+
+- **聊天代码块溢出被裁切**：markdown `pre`/`code` 与气泡加 `min-width:0`/`max-width:100%`，
+  长代码块/URL 不再撑破气泡被裁，改为横向滚动或换行。
+- **测试隔离**：sidecar 离线测试设 `RS_DISABLE_EMBEDDINGS=1`，避免索引测试触发真实
+  embedding 网络请求导致超时（本地有 .env.local key 时）。
+
+### Added (earlier)
+
 - **BYOK 设置面板**：用 `tauri-plugin-store` 持久化 provider/key/baseUrl/model 到本地
   app 数据目录；前端齿轮入口打开设置面板（选 provider、填 key、测试连接）；启动时与
   保存后把设置写进进程 env，`resolve_config` 无需改动即读到（优先级 store/env >
