@@ -189,18 +189,18 @@ export function ChatPanel({ summary, projectRoot, ref }: Props) {
               className={`flex ${m.role === "user" ? "justify-end" : "justify-start"} animate-in`}
             >
               <div
-                className={`max-w-[90%] px-4 py-3 shadow-sm ${
+                className={`max-w-[90%] min-w-0 px-4 py-3 shadow-sm ${
                   m.role === "user"
                     ? "bg-amber-600 text-white rounded-[1.25rem] rounded-tr-none"
                     : "bg-slate-100 dark:bg-white/5 text-slate-900 dark:text-slate-100 rounded-[1.25rem] rounded-tl-none border border-slate-200 dark:border-white/5"
                 }`}
               >
                 {m.role === "user" ? (
-                  <div className="text-sm leading-relaxed whitespace-pre-wrap">
+                  <div className="text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {m.content}
                   </div>
                 ) : (
-                  <div className="markdown-body text-sm">
+                  <div className="markdown-body text-sm min-w-0">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {m.content}
                     </ReactMarkdown>

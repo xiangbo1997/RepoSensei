@@ -82,6 +82,12 @@ body {
   color: var(--accent);
 }
 
+.markdown-body {
+  /* 让 markdown 容器能在 flex 气泡里收缩到 100%，否则长代码块会撑破气泡被裁切 */
+  min-width: 0;
+  max-width: 100%;
+}
+
 .markdown-body code {
   font-family: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
   font-size: 0.85em;
@@ -89,6 +95,9 @@ body {
   border-radius: 0.4em;
   background: rgba(0, 0, 0, 0.05);
   border: 1px solid rgba(0, 0, 0, 0.05);
+  /* 行内 code（长文件路径/URL）允许换行，避免撑宽溢出 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -104,6 +113,10 @@ body {
   border-radius: 0.75em;
   background: #1e293b;
   color: #f8fafc;
+  /* min-width:0 + max-width:100% 让 pre 可在 flex 容器里收缩，overflow-x:auto 才会
+     真正产生横向滚动条，而不是撑破气泡被父级裁切 */
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
   font-size: 0.85em;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -114,6 +127,10 @@ body {
   background: transparent;
   border: none;
   color: inherit;
+  /* 代码块内保留原始换行、不强制 break（横向滚动由 pre 处理） */
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: pre;
 }
 
 .markdown-body ul,
