@@ -36,6 +36,8 @@ const en: Dict = {
   "summary.concepts": "Concepts to learn",
   "summary.concept.found": "Found: {evidence}",
   "summary.concept.learnMore": "Learn more ↗",
+  "summary.tour": "Suggested reading order",
+  "summary.tour.step": "Step {n}",
 
   "chat.title": "Ask the Sensei",
   "chat.hint":
@@ -61,6 +63,36 @@ const en: Dict = {
 
   "summary.toggle.show": "Show summary",
   "summary.toggle.hide": "Hide summary",
+
+  "search.title": "Search code",
+  "search.placeholder": "Search symbols / code…",
+  "search.indexing": "Indexing…",
+  "search.noIndex": "Index not ready yet — try again shortly",
+  "search.empty": "No matches",
+  "search.hint":
+    "Search functions, classes, or any code. Try path: or kind: filters.",
+
+  "settings.title": "Settings",
+  "settings.provider": "Provider",
+  "settings.provider.anthropic": "Anthropic (native)",
+  "settings.provider.openai": "OpenAI-compatible",
+  "settings.baseUrl": "Base URL",
+  "settings.baseUrl.placeholder": "https://your-proxy.example.com/v1",
+  "settings.apiKey": "API key",
+  "settings.apiKey.placeholder": "Paste your key (stored locally)",
+  "settings.apiKey.set": "Key set ({hint}) — leave blank to keep",
+  "settings.summaryModel": "Summary model",
+  "settings.chatModel": "Chat model",
+  "settings.save": "Save",
+  "settings.saved": "Saved ✓",
+  "settings.test": "Test connection",
+  "settings.testing": "Testing…",
+  "settings.test.ok": "Connected: {label}",
+  "settings.test.fail": "Failed: {message}",
+  "settings.close": "Close",
+  "settings.hint.byok":
+    "Your key is stored locally and never leaves your machine.",
+  "settings.needed": "Set your API key in Settings to begin.",
 
   "footer.build": "M1 prototype · v0.1.0 · Tauri 2 + Next.js 16",
 };
@@ -92,6 +124,8 @@ const zh: Dict = {
   "summary.concepts": "可以顺手学的概念",
   "summary.concept.found": "出现在：{evidence}",
   "summary.concept.learnMore": "去学一下 ↗",
+  "summary.tour": "建议阅读顺序",
+  "summary.tour.step": "第 {n} 步",
 
   "chat.title": "请教师父",
   "chat.hint":
@@ -117,6 +151,34 @@ const zh: Dict = {
 
   "summary.toggle.show": "展开总结",
   "summary.toggle.hide": "收起总结",
+
+  "search.title": "搜索代码",
+  "search.placeholder": "搜索符号 / 代码…",
+  "search.indexing": "建立索引中…",
+  "search.noIndex": "索引还没就绪 — 稍后再试",
+  "search.empty": "没有匹配项",
+  "search.hint": "搜索函数、类或任意代码。可用 path: 或 kind: 过滤。",
+
+  "settings.title": "设置",
+  "settings.provider": "服务商",
+  "settings.provider.anthropic": "Anthropic（原生）",
+  "settings.provider.openai": "OpenAI 兼容",
+  "settings.baseUrl": "Base URL",
+  "settings.baseUrl.placeholder": "https://你的代理.example.com/v1",
+  "settings.apiKey": "API 密钥",
+  "settings.apiKey.placeholder": "粘贴你的 key（仅存本地）",
+  "settings.apiKey.set": "已设置（{hint}）— 留空则保持不变",
+  "settings.summaryModel": "总结模型",
+  "settings.chatModel": "对话模型",
+  "settings.save": "保存",
+  "settings.saved": "已保存 ✓",
+  "settings.test": "测试连接",
+  "settings.testing": "测试中…",
+  "settings.test.ok": "已连接：{label}",
+  "settings.test.fail": "失败：{message}",
+  "settings.close": "关闭",
+  "settings.hint.byok": "你的 key 仅存本地，绝不离开你的机器。",
+  "settings.needed": "在「设置」里填入 API key 即可开始。",
 
   "footer.build": "M1 原型 · v0.1.0 · Tauri 2 + Next.js 16",
 };

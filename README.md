@@ -32,19 +32,26 @@ for **writing** code; RepoSensei optimizes for **reading** code.
 | Learn the tech behind the code | Read docs yourself | ✅ auto concept bridges |
 | Keep your code private | Most are cloud | ✅ local + BYOK |
 
-## Status — M0 prototype
+## Status — M1 in progress
 
-This is week 1. Currently working:
+Working today:
 
 - [x] Tauri 2.0 + Next.js 16 + React 19 scaffold
 - [x] Project picker (file-system dialog)
-- [ ] Repomix sidecar — pack a repo into LLM-friendly text
-- [ ] Claude Sonnet 4.6 integration with prompt caching
-- [ ] Mermaid architecture diagram rendering
-- [ ] Single-turn Q&A interface
+- [x] Repomix sidecar — pack a repo into LLM-friendly text (with noise filtering)
+- [x] Claude / OpenAI-compatible integration with prompt caching (BYOK)
+- [x] Mermaid architecture diagram rendering
+- [x] Multi-turn streaming Q&A interface
+- [x] **Grounded Q&A** — FTS5 code index retrieves real source snippets and the
+      model cites `file:line`, instead of guessing from the summary
+- [x] **Code search panel** — search symbols/code with `path:`/`kind:` filters,
+      click a `file:line` hit to jump to it
+- [x] Incremental indexing (content-hash; only changed files re-indexed)
+- [ ] Hybrid retrieval (FTS5 + vector + RRF)
 - [ ] Validation on 3 real projects (React / Next.js / Rust)
 
-See [the roadmap](#roadmap) for what's coming.
+See [the roadmap](#roadmap) and [CHANGELOG](CHANGELOG.md) for details, and
+[docs/adr/](docs/adr/) for architecture decisions.
 
 ## Quick start (dev)
 
@@ -93,22 +100,24 @@ will surface. This is the M0 verification gate per the PRD.
 │                  Tauri 2.0 native window                 │
 │  ┌────────────────────────────────────────────────────┐  │
 │  │  Next.js 16 (SSG) + React 19 + Tailwind 4          │  │
-│  │  ├─ project picker / file tree                     │  │
-│  │  ├─ Mermaid renderer                               │  │
-│  │  └─ chat UI (Vercel AI SDK)                        │  │
+│  │  ├─ project picker / file tree / code search       │  │
+│  │  ├─ Mermaid renderer · shiki code viewer           │  │
+│  │  └─ streaming chat UI                              │  │
 │  └────────────────────────────────────────────────────┘  │
-│                          ↕ IPC                            │
+│                          ↕ Tauri IPC                      │
 │  ┌────────────────────────────────────────────────────┐  │
-│  │  Rust core (fs, git, lancedb, tree-sitter FFI)     │  │
+│  │  Rust core — commands + LLM client (bare reqwest,  │  │
+│  │  Anthropic/OpenAI-compat, SSE stream, grounding)   │  │
 │  └────────────────────────────────────────────────────┘  │
-│                          ↓ sidecar                        │
+│                          ↓ spawn sidecar (NDJSON)         │
 │  ┌────────────────────────────────────────────────────┐  │
-│  │  Node sidecar — Repomix packing                    │  │
+│  │  Node sidecar — Repomix packing · noise filter ·   │  │
+│  │  FTS5 code index (node:sqlite) · search            │  │
 │  └────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────┘
               │
               ↓ HTTPS (BYOK)
-   Claude / OpenAI / Gemini / Ollama (M2)
+   Claude / OpenAI-compatible / Ollama (M2)
 ```
 
 ## Roadmap

@@ -11,6 +11,8 @@ export interface ModuleSummary {
   path: string;
   purpose: string;
   keyFiles: string[];
+  /** 该模块依赖的其他模块 path（用于生成拓扑学习路径）。可选，旧 summary 无此字段。 */
+  dependsOn?: string[];
 }
 
 export interface ConceptCard {
@@ -27,6 +29,31 @@ export interface ProjectSummary {
   overview: string;
   mermaidArchitecture: string;
   conceptCards: ConceptCard[];
+}
+
+export interface CodeHit {
+  path: string;
+  score: number;
+  content: string;
+  startLine: number;
+  endLine: number;
+}
+
+export interface SearchResult {
+  hits: CodeHit[];
+  indexed: boolean;
+  hybrid?: boolean;
+}
+
+export type LlmProvider = "anthropic" | "openai";
+
+export interface SettingsView {
+  provider: LlmProvider | "";
+  baseUrl: string;
+  summaryModel: string;
+  chatModel: string;
+  hasKey: boolean;
+  keyHint: string;
 }
 
 export interface ChatMessage {

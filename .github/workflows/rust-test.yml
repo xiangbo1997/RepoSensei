@@ -11,6 +11,10 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # 项目 .cargo/config.toml 把 crates-io 替换为 rsproxy.cn（利于国内本地开发），
+  # 但 GitHub 海外 runner 拉该镜像不稳定（failed to get anyhow）。在 CI 用 env
+  # 把 "rsproxy-sparse" 这个 source 指回官方 sparse 源，绕过镜像、不改仓库配置。
+  CARGO_SOURCE_RSPROXY_SPARSE_REGISTRY: "sparse+https://index.crates.io/"
 
 jobs:
   rust-tests:
