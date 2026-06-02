@@ -30,6 +30,9 @@ pub struct ConceptCard {
   pub evidence: String,
   #[serde(rename = "learnMore")]
   pub learn_more: String,
+  /// learnMore 是否来自本地权威文档映射（而非 LLM 生成）。UI 据此显示「官方」徽章。
+  #[serde(default)]
+  pub verified: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -381,6 +384,16 @@ fn concept_from_value(v: &serde_json::Value) -> Option<ConceptCard> {
   if name.is_empty() {
     return None;
   }
+  let llm_url = obj
+    .get("learnMore")
+    .and_then(|s| s.as_str())
+    .unwrap_or("")
+    .to_string();
+  // 外部知识源：命中本地权威文档映射则覆盖 LLM 链接并标 verified；否则保留 LLM 的。
+  let (learn_more, verified) = match crate::concept_docs::lookup(&name) {
+    Some(url) => (url.to_string(), true),
+    None => (llm_url, false),
+  };
   Some(ConceptCard {
     name,
     one_liner: obj
@@ -393,11 +406,8 @@ fn concept_from_value(v: &serde_json::Value) -> Option<ConceptCard> {
       .and_then(|s| s.as_str())
       .unwrap_or("")
       .to_string(),
-    learn_more: obj
-      .get("learnMore")
-      .and_then(|s| s.as_str())
-      .unwrap_or("")
-      .to_string(),
+    learn_more,
+    verified,
   })
 }
 

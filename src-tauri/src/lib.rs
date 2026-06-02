@@ -1,3 +1,4 @@
+mod concept_docs;
 mod history;
 mod llm;
 mod settings;

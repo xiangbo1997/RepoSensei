@@ -9,6 +9,10 @@
 
 ### Added
 
+- **外部知识源（M2 · 概念桥兑现）**：`concept_docs.rs` 维护常见概念/模式（DI/Saga/
+  React Server Components/Hooks/Middleware/gRPC/Tauri 等 40+）→ 官方文档映射。概念卡
+  解析后命中映射则用**权威链接**覆盖 LLM 生成的 URL 并标 `verified`，UI 显示「✓ 官方」
+  徽章；未命中保留 LLM 链接。空链接不再渲染死链。确定性、离线、降级安全。
 - **项目历史（最近项目）**：导入成功后把项目存进本地 `history.json`（与 settings 分离），
   idle 界面展示最近列表，**一键秒级恢复**——复用已存的 summary（跳过打包/总结，省 LLM
   调用）+ 磁盘上按路径 hash 持久的检索索引，仅重跑 list_files 并后台增量重建索引以捕获

@@ -20,6 +20,8 @@ export interface ConceptCard {
   oneLiner: string;
   evidence: string;
   learnMore: string;
+  /** learnMore 来自本地权威文档映射（非 LLM 生成）→ UI 显示「官方」徽章。 */
+  verified?: boolean;
 }
 
 export interface ProjectSummary {

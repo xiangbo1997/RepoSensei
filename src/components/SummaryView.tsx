@@ -157,15 +157,19 @@ export function SummaryView({ summary }: Props) {
                     <span className="not-italic">📍</span>
                     {t("summary.concept.found", { evidence: c.evidence })}
                   </div>
-                  <a
-                    href={c.learnMore}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all active:scale-95"
-                  >
-                    {t("summary.concept.learnMore")}
-                    <span>↗</span>
-                  </a>
+                  {c.learnMore && (
+                    <a
+                      href={c.learnMore}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all active:scale-95"
+                    >
+                      {c.verified
+                        ? `✓ ${t("summary.concept.official")}`
+                        : t("summary.concept.learnMore")}
+                      <span>↗</span>
+                    </a>
+                  )}
                 </div>
               </div>
             ))}
