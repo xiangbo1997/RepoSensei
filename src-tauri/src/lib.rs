@@ -1,3 +1,4 @@
+mod history;
 mod llm;
 mod settings;
 mod sidecar;
@@ -84,6 +85,10 @@ pub fn run() {
       settings::get_settings,
       settings::save_settings,
       settings::test_connection,
+      history::save_recent,
+      history::get_recents,
+      history::remove_recent,
+      history::path_exists,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

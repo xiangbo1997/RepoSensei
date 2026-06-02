@@ -51,6 +51,11 @@ const en: Dict = {
 
   "panel.files": "Files",
   "panel.chat": "Sensei",
+
+  "recents.title": "Recent projects",
+  "recents.reindexing": "Re-indexing in background…",
+  "recents.gone": "Folder no longer exists — removed from history",
+  "recents.remove": "Remove",
   "tree.title": "Files",
   "tree.search": "Filter files…",
   "tree.empty": "No files",
@@ -141,6 +146,11 @@ const zh: Dict = {
 
   "panel.files": "文件",
   "panel.chat": "师父",
+
+  "recents.title": "最近的项目",
+  "recents.reindexing": "后台重建索引中…",
+  "recents.gone": "目录已不存在 — 已从历史移除",
+  "recents.remove": "移除",
   "tree.title": "文件树",
   "tree.search": "过滤文件…",
   "tree.empty": "没有文件",

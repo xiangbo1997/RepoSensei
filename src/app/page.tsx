@@ -1,7 +1,7 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPanel, type ChatPanelHandle } from "@/components/ChatPanel";
 import { CodeSearch } from "@/components/CodeSearch";
 import { CodeViewer } from "@/components/CodeViewer";
@@ -13,7 +13,7 @@ import { SummaryView } from "@/components/SummaryView";
 import type { FileEntry, FileListing } from "@/lib/file-tree";
 import { languageForPath } from "@/lib/file-tree";
 import { useT } from "@/lib/i18n";
-import type { PackedProject, ProjectSummary } from "@/lib/types";
+import type { PackedProject, ProjectSummary, RecentProject } from "@/lib/types";
 
 type Stage =
   | "idle"
@@ -35,7 +35,20 @@ export default function Home() {
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [recents, setRecents] = useState<RecentProject[]>([]);
   const chatRef = useRef<ChatPanelHandle | null>(null);
+
+  const refreshRecents = useCallback(async () => {
+    try {
+      setRecents(await invoke<RecentProject[]>("get_recents"));
+    } catch {
+      // 首次无历史，忽略
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshRecents();
+  }, [refreshRecents]);
 
   const reset = useCallback(() => {
     setStage("idle");
@@ -82,6 +95,19 @@ export default function Home() {
       setSummary(summaryResult);
       setStage("ready");
 
+      // 写入最近项目（存完整 summary，供下次秒级恢复）。
+      void invoke("save_recent", {
+        project: {
+          path: selected,
+          name: packedResult.name,
+          techStack: summaryResult.techStack,
+          summary: summaryResult,
+          openedAt: new Date().toISOString(),
+        },
+      })
+        .then(refreshRecents)
+        .catch(() => {});
+
       // 后台建代码检索索引（不阻塞 UI）：用户读 summary 时索引已在构建，
       // 等到提问时 Q&A 就能 grounding 到真实源码。失败仅降级，不打断流程。
       void invoke("index_project", { path: selected }).catch((err) => {
@@ -91,7 +117,50 @@ export default function Home() {
       setError(e instanceof Error ? e.message : String(e));
       setStage("error");
     }
-  }, [locale, t]);
+  }, [locale, t, refreshRecents]);
+
+  // 一键恢复最近项目：复用已存的 summary（不重新打包/总结）+ 磁盘上的检索索引。
+  // 仅重新 list_files（快）并在后台增量重建索引以捕获文件变更。
+  const restoreRecent = useCallback(
+    async (r: RecentProject) => {
+      setError(null);
+      const exists = await invoke<boolean>("path_exists", { path: r.path });
+      if (!exists) {
+        await invoke("remove_recent", { path: r.path }).catch(() => {});
+        await refreshRecents();
+        setError(t("recents.gone"));
+        setStage("error");
+        return;
+      }
+      setStage("listing");
+      setProjectRoot(r.path);
+      setSummary(r.summary);
+      try {
+        const listing = await invoke<FileListing>("list_files", {
+          path: r.path,
+        });
+        setFiles(listing.files);
+        setStage("ready");
+        // 后台增量重建索引：捕获上次打开后文件的变更（增量，未变文件跳过）。
+        void invoke("index_project", { path: r.path }).catch(() => {});
+        void invoke("save_recent", {
+          project: {
+            path: r.path,
+            name: r.name,
+            techStack: r.techStack,
+            summary: r.summary,
+            openedAt: new Date().toISOString(),
+          },
+        })
+          .then(refreshRecents)
+          .catch(() => {});
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        setStage("error");
+      }
+    },
+    [t, refreshRecents],
+  );
 
   const handleAskAboutFile = useCallback(
     (relativePath: string) => {
@@ -223,6 +292,53 @@ export default function Home() {
             >
               ⚙️ {t("settings.needed")}
             </button>
+
+            {recents.length > 0 && (
+              <div className="w-full max-w-md mt-2">
+                <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-3 px-1">
+                  {t("recents.title")}
+                </div>
+                <div className="flex flex-col gap-2">
+                  {recents.map((r) => (
+                    <div
+                      key={r.path}
+                      className="group flex items-center gap-3 p-3 rounded-2xl bg-white/60 dark:bg-white/[0.03] border border-slate-200 dark:border-white/5 hover:border-amber-500/40 transition-colors"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => restoreRecent(r)}
+                        className="flex-1 min-w-0 text-left"
+                      >
+                        <div className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                          {r.name}
+                        </div>
+                        <div className="font-mono text-[10px] text-slate-400 dark:text-slate-500 truncate">
+                          {r.path}
+                        </div>
+                        {r.techStack.length > 0 && (
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                            {r.techStack.slice(0, 4).join(" · ")}
+                          </div>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await invoke("remove_recent", {
+                            path: r.path,
+                          }).catch(() => {});
+                          await refreshRecents();
+                        }}
+                        title={t("recents.remove")}
+                        className="shrink-0 p-1 text-slate-300 hover:text-red-500 transition-colors text-xs"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

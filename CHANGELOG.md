@@ -9,6 +9,11 @@
 
 ### Added
 
+- **项目历史（最近项目）**：导入成功后把项目存进本地 `history.json`（与 settings 分离），
+  idle 界面展示最近列表，**一键秒级恢复**——复用已存的 summary（跳过打包/总结，省 LLM
+  调用）+ 磁盘上按路径 hash 持久的检索索引，仅重跑 list_files 并后台增量重建索引以捕获
+  变更。失效目录点击时校验并自动从历史移除。`history.rs`：save/get/remove_recent +
+  path_exists 命令。
 - **三栏可折叠 + 可拖拽布局**：`ResizablePanels` 组件（VS Code 风格 split-pane）。
   左(文件树)/右(聊天)可折叠成窄条、可拖拽分隔条改宽；中间(代码)弹性主区——任一侧
   收起空间自动归中间，两侧都收起时中间独占全部。宽度+折叠态持久化 localStorage。

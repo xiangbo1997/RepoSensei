@@ -45,6 +45,14 @@ export interface SearchResult {
   hybrid?: boolean;
 }
 
+export interface RecentProject {
+  path: string;
+  name: string;
+  techStack: string[];
+  summary: ProjectSummary;
+  openedAt: string;
+}
+
 export type LlmProvider = "anthropic" | "openai";
 
 export interface SettingsView {
