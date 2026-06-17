@@ -1,6 +1,6 @@
 [package]
 name = "reposensei"
-version = "0.1.1"
+version = "0.1.2"
 description = "Your AI repo sensei — understand any GitHub project in 15 minutes."
 authors = ["RepoSensei Contributors"]
 edition = "2021"
