@@ -42,6 +42,9 @@ yarn-error.log*
 /src-tauri/target/
 /src-tauri/gen/schemas/
 
+# codegraph daemon runtime (contains a unix socket Turbopack must not scan)
+/.codegraph/
+
 # IDE
 .vscode/
 .idea/
