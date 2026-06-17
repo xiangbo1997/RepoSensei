@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::process::Stdio;
 
 use serde::{Deserialize, Serialize};
+use tauri::path::BaseDirectory;
+use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 
@@ -87,7 +89,9 @@ struct SidecarResponse {
   error: Option<String>,
 }
 
-fn sidecar_script_path() -> PathBuf {
+/// dev 下源码树里的 sidecar 脚本路径（CARGO_MANIFEST_DIR/../sidecar/pack-server.mjs）。
+/// 仅当 bundled resource 不存在时作为回退使用。
+fn dev_script_path() -> PathBuf {
   let manifest_dir = env!("CARGO_MANIFEST_DIR");
   PathBuf::from(manifest_dir)
     .parent()
@@ -95,18 +99,48 @@ fn sidecar_script_path() -> PathBuf {
     .unwrap_or_else(|| PathBuf::from("sidecar/pack-server.mjs"))
 }
 
+/// 解析 sidecar 入口脚本：优先用打进 bundle 的 resources/sidecar/pack-server.mjs，
+/// 该文件不存在（dev 运行）时回退到源码树。
+fn resolve_script_path(app: &AppHandle) -> PathBuf {
+  if let Ok(p) = app
+    .path()
+    .resolve("sidecar/pack-server.mjs", BaseDirectory::Resource)
+  {
+    if p.exists() {
+      return p;
+    }
+  }
+  dev_script_path()
+}
+
+/// 解析 node 可执行文件：优先用打进 bundle 的 resources/node（最终用户无需自带 node），
+/// 该文件不存在（dev 运行）时回退到系统 PATH 里的 "node"。
+fn resolve_node_command(app: &AppHandle) -> String {
+  if let Ok(p) = app.path().resolve("node", BaseDirectory::Resource) {
+    if p.exists() {
+      return p.to_string_lossy().into_owned();
+    }
+  }
+  "node".to_string()
+}
+
 /// Generic call: spawn node sidecar, write one JSON line, read one JSON
 /// response, then kill the child. Deserialize the response data into T.
-async fn call_sidecar<T>(cmd: &str, args: serde_json::Value) -> Result<T, String>
+async fn call_sidecar<T>(
+  app: &AppHandle,
+  cmd: &str,
+  args: serde_json::Value,
+) -> Result<T, String>
 where
   T: serde::de::DeserializeOwned,
 {
-  let script = sidecar_script_path();
+  let script = resolve_script_path(app);
   if !script.exists() {
     return Err(format!("sidecar script not found at {}", script.display()));
   }
+  let node = resolve_node_command(app);
 
-  let mut child = Command::new("node")
+  let mut child = Command::new(&node)
     .arg(&script)
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
@@ -154,32 +188,39 @@ where
   serde_json::from_value::<T>(data).map_err(|e| format!("decode {cmd} response failed: {e}"))
 }
 
-pub async fn pack_project(project_path: String) -> Result<PackedProject, String> {
-  call_sidecar("pack", serde_json::json!({ "path": project_path })).await
+pub async fn pack_project(app: &AppHandle, project_path: String) -> Result<PackedProject, String> {
+  call_sidecar(app, "pack", serde_json::json!({ "path": project_path })).await
 }
 
-pub async fn list_files(project_path: String) -> Result<FileListing, String> {
-  call_sidecar("list_files", serde_json::json!({ "path": project_path })).await
+pub async fn list_files(app: &AppHandle, project_path: String) -> Result<FileListing, String> {
+  call_sidecar(app, "list_files", serde_json::json!({ "path": project_path })).await
 }
 
-pub async fn read_file(root: String, relative: String) -> Result<FileContent, String> {
+pub async fn read_file(
+  app: &AppHandle,
+  root: String,
+  relative: String,
+) -> Result<FileContent, String> {
   call_sidecar(
+    app,
     "read_file",
     serde_json::json!({ "root": root, "relative": relative }),
   )
   .await
 }
 
-pub async fn index_project(project_path: String) -> Result<IndexResult, String> {
-  call_sidecar("index_project", serde_json::json!({ "path": project_path })).await
+pub async fn index_project(app: &AppHandle, project_path: String) -> Result<IndexResult, String> {
+  call_sidecar(app, "index_project", serde_json::json!({ "path": project_path })).await
 }
 
 pub async fn search_code(
+  app: &AppHandle,
   project_path: String,
   query: String,
   limit: u32,
 ) -> Result<SearchResult, String> {
   call_sidecar(
+    app,
     "search_code",
     serde_json::json!({ "path": project_path, "query": query, "limit": limit }),
   )

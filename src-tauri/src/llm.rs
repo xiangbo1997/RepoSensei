@@ -10,7 +10,7 @@ use std::sync::OnceLock;
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Window};
+use tauri::{Emitter, Manager, Window};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModuleSummary {
@@ -471,7 +471,7 @@ pub async fn chat_stream(
   // grounding：用问题检索真实源码片段，注入到 system 末尾（最贴近问题，规避
   // lost-in-the-middle）。检索失败/无索引不阻塞对话——降级为「仅靠 summary 回答」。
   let grounding = match project_root {
-    Some(root) => build_grounding_block(root, question).await,
+    Some(root) => build_grounding_block(window.app_handle(), root, question).await,
     None => String::new(),
   };
 
@@ -521,8 +521,13 @@ pub async fn chat_stream(
 
 /// 检索与问题相关的源码片段，拼成可注入 prompt 的文本块（带预算截断）。
 /// 任何错误都吞掉返回空串——grounding 是增强，不该让对话失败。
-async fn build_grounding_block(project_root: &str, question: &str) -> String {
+async fn build_grounding_block(
+  app: &tauri::AppHandle,
+  project_root: &str,
+  question: &str,
+) -> String {
   let result = match crate::sidecar::search_code(
+    app,
     project_root.to_string(),
     question.to_string(),
     GROUNDING_MAX_HITS,

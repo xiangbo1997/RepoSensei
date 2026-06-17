@@ -8,32 +8,37 @@ use llm::{ChatMessage, ProjectSummary};
 use sidecar::{FileContent, FileListing, IndexResult, PackedProject, SearchResult};
 
 #[tauri::command]
-async fn pack_project(path: String) -> Result<PackedProject, String> {
-  sidecar::pack_project(path).await
+async fn pack_project(app: tauri::AppHandle, path: String) -> Result<PackedProject, String> {
+  sidecar::pack_project(&app, path).await
 }
 
 #[tauri::command]
-async fn index_project(path: String) -> Result<IndexResult, String> {
-  sidecar::index_project(path).await
+async fn index_project(app: tauri::AppHandle, path: String) -> Result<IndexResult, String> {
+  sidecar::index_project(&app, path).await
 }
 
 #[tauri::command]
 async fn search_code(
+  app: tauri::AppHandle,
   path: String,
   query: String,
   limit: Option<u32>,
 ) -> Result<SearchResult, String> {
-  sidecar::search_code(path, query, limit.unwrap_or(10)).await
+  sidecar::search_code(&app, path, query, limit.unwrap_or(10)).await
 }
 
 #[tauri::command]
-async fn list_files(path: String) -> Result<FileListing, String> {
-  sidecar::list_files(path).await
+async fn list_files(app: tauri::AppHandle, path: String) -> Result<FileListing, String> {
+  sidecar::list_files(&app, path).await
 }
 
 #[tauri::command]
-async fn read_file(root: String, relative: String) -> Result<FileContent, String> {
-  sidecar::read_file(root, relative).await
+async fn read_file(
+  app: tauri::AppHandle,
+  root: String,
+  relative: String,
+) -> Result<FileContent, String> {
+  sidecar::read_file(&app, root, relative).await
 }
 
 #[tauri::command]

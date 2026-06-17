@@ -8,6 +8,7 @@
   "scripts": {
     "dev:next": "next dev --turbopack",
     "build:next": "next build",
+    "prepare:sidecar": "node scripts/prepare-sidecar.mjs",
     "test": "vitest run",
     "tauri": "tauri",
     "format": "biome format",
