@@ -27,6 +27,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -197,9 +198,58 @@ function prepareRepomixDeps() {
     // 而 Tauri bundler 会因这些断链报「resource doesn't exist」而构建失败。
     rmSync(path.join(dstNm, ".bin"), { recursive: true, force: true });
     console.log(`[prepare-sidecar] repomix prod deps copied to ${dstNm} (.bin stripped)`);
+
+    trimNonRuntimeFiles(dstNm);
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+/**
+ * 删除 node_modules 里运行时绝不加载的文件，缩减 bundle 体积（约省 50MB）。
+ *
+ * 只删第 1 类「非运行时」内容——零风险，Node 加载模块时永不触碰：
+ *   - source map（.map）、TS 类型声明（.d.ts/.d.cts/.d.mts）、TS 源码（.ts，
+ *     已编译成 .js）；
+ *   - 文档（README/LICENSE/CHANGELOG/*.md）；
+ *   - 测试目录（__tests__/test/tests）。
+ *
+ * 不碰第 2 类「依赖包」（如 @secretlint、@modelcontextprotocol）：repomix 在
+ * 顶层静态 import 它们，删任何一个都会让 `import("repomix")` 直接崩溃——已实测。
+ */
+function trimNonRuntimeFiles(nmDir) {
+  // 受保护后缀：运行时会加载，绝不删除。
+  const keepExt = new Set([".js", ".cjs", ".mjs", ".json", ".wasm", ".node"]);
+  const docNames = /^(readme|license|licence|changelog|history|authors|notice)/i;
+
+  let removed = 0;
+  const entries = readdirSync(nmDir, { recursive: true, withFileTypes: true });
+  const dirsToRemove = [];
+
+  for (const e of entries) {
+    const full = path.join(e.parentPath ?? e.path, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "__tests__" || e.name === "test" || e.name === "tests") {
+        dirsToRemove.push(full);
+      }
+      continue;
+    }
+    const lower = e.name.toLowerCase();
+    const ext = path.extname(lower);
+    const isMap = lower.endsWith(".map");
+    const isDecl = /\.d\.(c|m)?ts$/.test(lower);
+    const isTsSrc = ext === ".ts" && !isDecl; // .ts 源码（保留 .d.ts 已在 isDecl 单独处理）
+    const isDoc = ext === ".md" || docNames.test(lower);
+    // 仅删非受保护后缀的目标文件，绝不误删 .js/.json/.wasm 等。
+    if (!keepExt.has(ext) && (isMap || isDecl || isTsSrc || isDoc)) {
+      rmSync(full, { force: true });
+      removed++;
+    }
+  }
+  for (const d of dirsToRemove) {
+    rmSync(d, { recursive: true, force: true });
+  }
+  console.log(`[prepare-sidecar] trimmed ${removed} non-runtime files + test dirs`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
