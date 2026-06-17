@@ -49,10 +49,21 @@ const NODE_VERSION = "24.16.0";
 // 平台 → nodejs.org 下载包名映射
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 把 `process.platform`/`process.arch` 映射到 nodejs.org 的发行包标识与解包后 node 路径。 */
+/**
+ * 解析目标架构。默认用运行脚本机器的 `process.arch`，但允许环境变量
+ * `RS_TARGET_ARCH` 覆盖——CI 在 arm64 的 macOS runner 上交叉构建 x64 包时，
+ * runner 架构是 arm64 而 Rust 目标是 x64，必须按目标而非运行机下载对应 Node。
+ */
+function targetArch() {
+  const override = process.env.RS_TARGET_ARCH;
+  if (override) return override; // "x64" | "arm64"
+  return process.arch;
+}
+
+/** 把目标 platform/arch 映射到 nodejs.org 的发行包标识与解包后 node 路径。 */
 function nodeDistTarget() {
   const platform = process.platform;
-  const arch = process.arch;
+  const arch = targetArch();
   // nodejs.org 命名：node-v<ver>-<os>-<arch>.<ext>
   if (platform === "darwin" && arch === "arm64") {
     return { pkg: `node-v${NODE_VERSION}-darwin-arm64`, ext: "tar.gz", binInArchive: "bin/node" };
@@ -123,11 +134,20 @@ async function prepareNodeBinary() {
     }
     console.log("[prepare-sidecar] node sha256 verified");
 
-    // 解包（macOS/Linux 用 tar，Windows 用 unzip）。
+    // 解包：macOS/Linux 用系统 tar；Windows 用 PowerShell Expand-Archive
+    // （Windows 必有，不依赖 unzip——CI runner 上 unzip 不保证存在）。
     if (ext === "tar.gz") {
       execFileSync("tar", ["-xzf", archivePath, "-C", work], { stdio: "inherit" });
     } else {
-      execFileSync("unzip", ["-q", archivePath, "-d", work], { stdio: "inherit" });
+      execFileSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-Command",
+          `Expand-Archive -Path '${archivePath}' -DestinationPath '${work}' -Force`,
+        ],
+        { stdio: "inherit" },
+      );
     }
 
     const extractedBin = path.join(work, pkg, binInArchive);
@@ -182,8 +202,11 @@ function prepareRepomixDeps() {
       path.join(work, "package.json"),
       JSON.stringify({ name: "rs-sidecar-deps", private: true, dependencies: { repomix: repomixVersion } }),
     );
+    // Windows 上 npm 是 `npm.cmd`，execFileSync 默认不走 shell 会 ENOENT；
+    // 显式带后缀比 shell:true 更安全（避免 Node 24 的 DEP0190 参数注入警告）。
+    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
     execFileSync(
-      "npm",
+      npmCmd,
       ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"],
       { cwd: work, stdio: "inherit" },
     );

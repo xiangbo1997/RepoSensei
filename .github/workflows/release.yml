@@ -1,0 +1,112 @@
+name: Release
+
+# 推送 v* tag（如 v0.1.0）时，构建 macOS(arm64+x64)/Windows/Linux 安装包，
+# 并附到对应的 GitHub Release。各平台 runner 由 beforeDevCommand 自动跑
+# prepare:sidecar，下载各自平台的 Node 24 内嵌进 app（最终用户无需装 node）。
+
+permissions:
+  contents: write # tauri-action 需要写权限来创建/更新 release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: # 允许手动触发（调试用）
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_RETRY: "5"
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest # Apple Silicon (arm64)
+            args: "--target aarch64-apple-darwin"
+            rust-target: aarch64-apple-darwin
+          - platform: macos-13 # Intel (x64) — 真 x64 runner，避免交叉构建
+            args: "--target x86_64-apple-darwin"
+            rust-target: x86_64-apple-darwin
+          - platform: ubuntu-22.04 # Linux x64
+            args: ""
+            rust-target: ""
+          - platform: windows-latest # Windows x64
+            args: ""
+            rust-target: ""
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # 移除指向 rsproxy.cn 国内镜像的项目 cargo 配置——海外 runner 拉取不稳。
+      # checkout 是一次性的，删除不影响仓库；cargo 改用默认 crates.io。
+      - name: Use default crates.io registry (drop project mirror config)
+        shell: bash
+        run: rm -f .cargo/config.toml
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libglib2.0-dev \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            lld
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.rust-target }}
+          cache: true
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # tag 已由 push 创建，复用它；不自动建草稿，直接发布到该 tag。
+          tagName: ${{ github.ref_name }}
+          releaseName: "RepoSensei ${{ github.ref_name }}"
+          releaseBody: |
+            自包含桌面应用，内嵌 Node 运行时，最终用户无需安装任何依赖。
+
+            ## 下载（按平台）
+            - **macOS Apple Silicon (M1+)**: `*_aarch64.dmg`
+            - **macOS Intel**: `*_x64.dmg`
+            - **Windows**: `*_x64-setup.exe` 或 `*_x64_en-US.msi`
+            - **Linux**: `*_amd64.AppImage` 或 `*_amd64.deb`
+
+            ## macOS 首次打开（未签名）
+            右键点应用 → 打开 → 再次「打开」；若提示「已损坏」执行：
+            `xattr -cr /Applications/RepoSensei.app`
+
+            ## 使用
+            应用内「设置」填入 API key（Anthropic 原生 / OpenAI 兼容代理），
+            选本地 Git 仓库即可开始。BYOK、本地优先。
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}
