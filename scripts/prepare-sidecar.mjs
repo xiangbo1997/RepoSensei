@@ -202,14 +202,25 @@ function prepareRepomixDeps() {
       path.join(work, "package.json"),
       JSON.stringify({ name: "rs-sidecar-deps", private: true, dependencies: { repomix: repomixVersion } }),
     );
-    // Windows 上 npm 是 `npm.cmd`，execFileSync 默认不走 shell 会 ENOENT；
-    // 显式带后缀比 shell:true 更安全（避免 Node 24 的 DEP0190 参数注入警告）。
-    const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
-    execFileSync(
-      npmCmd,
-      ["install", "--omit=dev", "--no-audit", "--no-fund", "--loglevel=error"],
-      { cwd: work, stdio: "inherit" },
-    );
+    // 显式用官方 registry：脚本在临时目录跑 npm，读不到项目 .npmrc，会落到用户
+    // 全局 ~/.npmrc（可能是国内镜像，如 npmmirror）——本机和海外 CI runner 都可能
+    // 因此解析失败。写死官方源，环境无关、可复现。
+    // Windows 上 npm 是批处理 `npm.cmd`，必须经 shell 解释（execFileSync 直接执行
+    // .cmd 会 EINVAL）；参数为写死常量，无注入风险。macOS/Linux 的 `npm` 是真可
+    // 执行文件，直接 execFileSync。
+    const npmArgs = [
+      "install",
+      "--omit=dev",
+      "--no-audit",
+      "--no-fund",
+      "--registry=https://registry.npmjs.org/",
+      "--loglevel=error",
+    ];
+    if (process.platform === "win32") {
+      execFileSync(`npm ${npmArgs.join(" ")}`, { cwd: work, stdio: "inherit", shell: true });
+    } else {
+      execFileSync("npm", npmArgs, { cwd: work, stdio: "inherit" });
+    }
 
     const srcNm = path.join(work, "node_modules");
     const dstNm = path.join(SIDECAR_DST, "node_modules");
