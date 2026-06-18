@@ -126,11 +126,7 @@ fn resolve_node_command(app: &AppHandle) -> String {
 
 /// Generic call: spawn node sidecar, write one JSON line, read one JSON
 /// response, then kill the child. Deserialize the response data into T.
-async fn call_sidecar<T>(
-  app: &AppHandle,
-  cmd: &str,
-  args: serde_json::Value,
-) -> Result<T, String>
+async fn call_sidecar<T>(app: &AppHandle, cmd: &str, args: serde_json::Value) -> Result<T, String>
 where
   T: serde::de::DeserializeOwned,
 {
@@ -193,7 +189,12 @@ pub async fn pack_project(app: &AppHandle, project_path: String) -> Result<Packe
 }
 
 pub async fn list_files(app: &AppHandle, project_path: String) -> Result<FileListing, String> {
-  call_sidecar(app, "list_files", serde_json::json!({ "path": project_path })).await
+  call_sidecar(
+    app,
+    "list_files",
+    serde_json::json!({ "path": project_path }),
+  )
+  .await
 }
 
 pub async fn read_file(
@@ -210,7 +211,12 @@ pub async fn read_file(
 }
 
 pub async fn index_project(app: &AppHandle, project_path: String) -> Result<IndexResult, String> {
-  call_sidecar(app, "index_project", serde_json::json!({ "path": project_path })).await
+  call_sidecar(
+    app,
+    "index_project",
+    serde_json::json!({ "path": project_path }),
+  )
+  .await
 }
 
 pub async fn search_code(

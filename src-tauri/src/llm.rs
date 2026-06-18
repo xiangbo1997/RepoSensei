@@ -363,8 +363,7 @@ async fn summarize_oneshot(
 ) -> Result<ProjectSummary, String> {
   let instructions = summary_instructions(locale);
   let (content, truncated) = budget_content(packed);
-  let user_prompt =
-    repository_user_prompt(packed, content, truncated, "Produce the JSON now.");
+  let user_prompt = repository_user_prompt(packed, content, truncated, "Produce the JSON now.");
   let raw = summary_call(cfg, &instructions, &user_prompt).await?;
   parse_summary_resilient(&raw)
 }
@@ -811,7 +810,10 @@ fn grounding_budget_for(question: &str) -> &'static GroundingBudget {
     "是做什么",
     "做什么的",
   ];
-  if OVERVIEW_HINTS.iter().any(|h| q.contains(h) || question.contains(h)) {
+  if OVERVIEW_HINTS
+    .iter()
+    .any(|h| q.contains(h) || question.contains(h))
+  {
     &GROUNDING_OVERVIEW
   } else {
     &GROUNDING_DETAIL
@@ -1330,10 +1332,7 @@ mod tests {
   fn grounding_respects_char_budget() {
     // 字符预算应限制注入条数：极小预算下只放得下第一条。
     let result = SearchResult {
-      hits: vec![
-        hit("a.rs", 1, 5, "AAAA"),
-        hit("b.rs", 1, 5, "BBBB"),
-      ],
+      hits: vec![hit("a.rs", 1, 5, "AAAA"), hit("b.rs", 1, 5, "BBBB")],
       indexed: true,
       hybrid: false,
     };
