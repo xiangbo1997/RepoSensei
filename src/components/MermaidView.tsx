@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useT } from "@/lib/i18n";
 
 interface Props {
@@ -18,9 +18,8 @@ const RENDER_DEBOUNCE_MS = 250;
 export function MermaidView({ code, streaming = false }: Props) {
   const { t } = useT();
   const id = useId().replace(/:/g, "-");
-  const ref = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rendered, setRendered] = useState(false);
 
   useEffect(() => {
     // 流式追加期间不渲染：半截 mermaid 必然解析失败，留到完成后一次性渲染。
@@ -36,16 +35,17 @@ export function MermaidView({ code, streaming = false }: Props) {
             theme: "default",
             securityLevel: "loose",
           });
-          const { svg } = await mermaid.render(`mermaid-${id}`, code.trim());
-          if (!cancelled && ref.current) {
-            ref.current.innerHTML = svg;
+          // 把 svg 存进 state（而非写 ref.current.innerHTML）——回退态下挂 ref 的
+          // 节点尚未挂载，依赖 ref 会导致「永远渲染不出」的死锁。
+          const out = await mermaid.render(`mermaid-${id}`, code.trim());
+          if (!cancelled) {
+            setSvg(out.svg);
             setError(null);
-            setRendered(true);
           }
         } catch (e) {
           if (!cancelled) {
             setError(e instanceof Error ? e.message : String(e));
-            setRendered(false);
+            setSvg(null);
           }
         }
       };
@@ -58,15 +58,18 @@ export function MermaidView({ code, streaming = false }: Props) {
     };
   }, [code, id, streaming]);
 
-  // 流式追加中或尚未渲染成功：先显示源码（不报错），等待完整内容到来后渲染。
-  if (streaming || (!rendered && !error)) {
+  // 渲染成功：注入 svg。
+  if (svg && !error) {
     return (
-      <pre className="my-2 p-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg text-xs whitespace-pre-wrap overflow-auto text-slate-600 dark:text-slate-300">
-        {code}
-      </pre>
+      <div
+        // biome-ignore lint/security/noDangerouslySetInnerHtml: svg 来自本地 mermaid 渲染，securityLevel:loose 下已由 mermaid 内部 sanitize
+        dangerouslySetInnerHTML={{ __html: svg }}
+        className="mermaid-container w-full overflow-auto bg-white dark:bg-slate-900 rounded-lg p-4 border border-slate-200 dark:border-slate-800"
+      />
     );
   }
 
+  // 渲染失败：可展开查看源码与错误。
   if (error) {
     return (
       <details className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 rounded-lg text-sm">
@@ -83,10 +86,10 @@ export function MermaidView({ code, streaming = false }: Props) {
     );
   }
 
+  // 流式追加中或尚未出结果：先显示源码（不报错），等待渲染完成。
   return (
-    <div
-      ref={ref}
-      className="mermaid-container w-full overflow-auto bg-white dark:bg-slate-900 rounded-lg p-4 border border-slate-200 dark:border-slate-800"
-    />
+    <pre className="my-2 p-3 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-lg text-xs whitespace-pre-wrap overflow-auto text-slate-600 dark:text-slate-300">
+      {code}
+    </pre>
   );
 }
