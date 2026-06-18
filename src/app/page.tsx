@@ -218,11 +218,11 @@ export default function Home() {
               Sensei
             </span>
           </h1>
-          {packed && stage === "ready" && (
+          {projectRoot && stage === "ready" && (
             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 min-w-0">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate uppercase tracking-widest">
-                {packed.path}
+                {projectRoot}
               </span>
             </div>
           )}
@@ -262,7 +262,7 @@ export default function Home() {
                 : t("summary.toggle.show")}
             </button>
           )}
-          {packed && stage === "ready" && (
+          {projectRoot && stage === "ready" && (
             <button
               type="button"
               onClick={reset}
@@ -426,7 +426,7 @@ export default function Home() {
           </div>
         )}
 
-        {stage === "ready" && summary && packed && projectRoot && (
+        {stage === "ready" && summary && projectRoot && (
           <div className="h-full min-h-0 animate-in">
             <ResizablePanels
               leftLabel={t("panel.files")}
@@ -453,9 +453,16 @@ export default function Home() {
                   {summaryOpen && (
                     <div className="max-h-[45%] overflow-auto p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none space-y-5">
                       <SummaryView summary={summary} />
-                      <div className="pt-4 border-t border-slate-100 dark:border-white/5">
-                        <DeepAnalysisPanel packed={packed} summary={summary} />
-                      </div>
+                      {/* 深度分析需要完整打包内容（packed）。从历史恢复时不重新打包，
+                          故 packed 为 null——此时隐藏深度分析，主界面其余部分照常可用。 */}
+                      {packed && (
+                        <div className="pt-4 border-t border-slate-100 dark:border-white/5">
+                          <DeepAnalysisPanel
+                            packed={packed}
+                            summary={summary}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
                   <div className="flex-1 min-h-0">
