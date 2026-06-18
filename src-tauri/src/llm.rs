@@ -820,6 +820,17 @@ fn grounding_budget_for(question: &str) -> &'static GroundingBudget {
   }
 }
 
+/// 注入 chat system prompt 的画图规约。前端只把 ```mermaid 围栏渲染成图，
+/// 故强制模型：① 用且仅用 ```mermaid 围栏；② 写合法 mermaid 语法（流程图用 graph
+/// TD/LR）；③ 节点标签避免裸括号/引号，换行用 <br/>——否则前端拦到也会解析失败。
+const DIAGRAM_INSTRUCTIONS: &str = "When a diagram (flow, architecture, sequence, \
+state) makes the answer clearer, draw it with Mermaid in a fenced code block tagged \
+exactly ```mermaid (never ```flowchart, ```graph, or an untagged/ASCII block). Use \
+valid Mermaid syntax — `graph TD` or `graph LR` for flow/architecture. Keep node IDs \
+short; put human text inside [square brackets]. Avoid raw parentheses, quotes, or \
+slashes inside labels (they break the parser) — replace them with words and use <br/> \
+for line breaks. Prefer one focused diagram over a sprawling one.";
+
 pub async fn chat_stream(
   window: Window,
   summary: &ProjectSummary,
@@ -846,7 +857,7 @@ pub async fn chat_stream(
 
   // Context 布局顺序：角色/规则 → locale → 项目概述 → 模块清单 → 检索源码（最相关，置底）。
   let mut system = format!(
-        "You are RepoSensei. Help the developer understand this codebase.\nGround every claim in the project's actual files. If unsure, say so.\n\n{directive}\n\nProject overview: {}\nTech: {}\n\nModules:\n{}",
+        "You are RepoSensei. Help the developer understand this codebase.\nGround every claim in the project's actual files. If unsure, say so.\n\n{directive}\n\n{DIAGRAM_INSTRUCTIONS}\n\nProject overview: {}\nTech: {}\n\nModules:\n{}",
         summary.overview,
         summary.tech_stack.join(", "),
         modules

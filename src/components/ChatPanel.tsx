@@ -14,6 +14,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useT } from "@/lib/i18n";
 import type { ChatBubble, ChatMessage, ProjectSummary } from "@/lib/types";
+import { MermaidView } from "./MermaidView";
 
 let messageCounter = 0;
 const nextId = () => `msg-${++messageCounter}`;
@@ -237,7 +238,31 @@ export function ChatPanel({
                   </div>
                 ) : (
                   <div className="markdown-body text-sm min-w-0">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        code({ className, children, ...props }) {
+                          const lang = /language-(\w+)/.exec(className ?? "");
+                          if (lang?.[1] === "mermaid") {
+                            // 当前仍在流式追加的那条 bot 消息：mermaid 源码可能是半截的，
+                            // 传 streaming 让 MermaidView 先显示源码、不刷红框，待追加结束再渲染。
+                            const isStreamingThis =
+                              streaming && m.id === currentBotIdRef.current;
+                            return (
+                              <MermaidView
+                                code={String(children).replace(/\n$/, "")}
+                                streaming={isStreamingThis}
+                              />
+                            );
+                          }
+                          return (
+                            <code className={className} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                      }}
+                    >
                       {m.content}
                     </ReactMarkdown>
                   </div>
