@@ -21,6 +21,8 @@ const nextId = () => `msg-${++messageCounter}`;
 interface Props {
   summary: ProjectSummary;
   projectRoot: string;
+  /** 代码检索索引的后台构建状态。首问且仍在 building 时会短等就绪（带超时）。 */
+  indexStatus?: "idle" | "building" | "ready";
   ref?: Ref<ChatPanelHandle>;
 }
 
@@ -28,14 +30,27 @@ export interface ChatPanelHandle {
   prefill: (text: string, focus?: boolean) => void;
 }
 
-export function ChatPanel({ summary, projectRoot, ref }: Props) {
+/** 首问等待索引就绪的硬超时（毫秒）：到点照常发送，避免永久卡住。 */
+const INDEX_WAIT_TIMEOUT_MS = 8000;
+const INDEX_WAIT_POLL_MS = 200;
+
+export function ChatPanel({
+  summary,
+  projectRoot,
+  indexStatus = "idle",
+  ref,
+}: Props) {
   const { t, locale } = useT();
   const [history, setHistory] = useState<ChatBubble[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [waitingIndex, setWaitingIndex] = useState(false);
   const currentBotIdRef = useRef<string | null>(null);
   const scrollerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // send 是 useCallback 闭包，会捕获旧的 indexStatus；用 ref 同步最新值供轮询读取。
+  const indexStatusRef = useRef(indexStatus);
+  indexStatusRef.current = indexStatus;
 
   useImperativeHandle(
     ref,
@@ -120,6 +135,18 @@ export function ChatPanel({ summary, projectRoot, ref }: Props) {
       content,
     }));
 
+    // 首问 gating：只有「刚选完项目就立刻提问」这一窗口会踩空索引。仅当本次是
+    // 第一条消息（history 为空）且索引仍在 building 时，短等就绪——带硬超时，
+    // 到点照常发送（降级有 Rust 端的诚实声明兜底）。后续提问索引早已 ready，不等。
+    if (history.length === 0 && indexStatusRef.current === "building") {
+      setWaitingIndex(true);
+      const deadline = Date.now() + INDEX_WAIT_TIMEOUT_MS;
+      while (indexStatusRef.current === "building" && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, INDEX_WAIT_POLL_MS));
+      }
+      setWaitingIndex(false);
+    }
+
     try {
       await invoke("chat_ask", {
         summary,
@@ -171,6 +198,15 @@ export function ChatPanel({ summary, projectRoot, ref }: Props) {
           </div>
         )}
       </div>
+
+      {waitingIndex && (
+        <div className="px-6 py-2 bg-amber-50/60 dark:bg-amber-950/20 border-b border-amber-100 dark:border-amber-900/30 flex items-center gap-2">
+          <div className="w-3 h-3 border-2 border-amber-500 border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="text-[11px] text-amber-700 dark:text-amber-300 leading-snug">
+            {t("chat.waitingIndex")}
+          </span>
+        </div>
+      )}
 
       <div ref={scrollerRef} className="flex-1 overflow-y-auto p-6 space-y-6">
         {history.length === 0 ? (

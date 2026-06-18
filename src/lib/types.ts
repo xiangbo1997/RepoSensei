@@ -33,6 +33,13 @@ export interface ProjectSummary {
   conceptCards: ConceptCard[];
 }
 
+/** 深度分析的单个视角产出（dataflow / security / testing 等）。 */
+export interface DeepInsight {
+  perspective: string;
+  markdown: string;
+  ok: boolean;
+}
+
 export interface CodeHit {
   path: string;
   score: number;

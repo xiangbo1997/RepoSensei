@@ -10,7 +10,7 @@
  *   OPENAI_API_KEY=... \
  *   OPENAI_BASE_URL=https://proxy.example.com/v1 \
  *   RS_SUMMARY_MODEL=claude-sonnet-4-6 \
- *   RS_CHAT_MODEL=gpt-5.4-mini \
+ *   RS_CHAT_MODEL=claude-haiku-4-5-20251001 \
  *   node sidecar/e2e-test.mjs /path/to/repo
  *
  * What it does:
@@ -91,10 +91,12 @@ const SUMMARY_INSTRUCTIONS = `You are RepoSensei. Analyze the given repository a
 }
 
 Rules:
-- Cite real file paths.
-- Mermaid: use \`graph LR\`, max 12 nodes, group by module.
-- Concept cards: only patterns/libs actually used. Authoritative learnMore URL.
-- Return ONLY the JSON object, no prose, no fences.`;
+- Cite ONLY real file paths that appear in the repository. Never invent paths or symbols.
+- modules[].dependsOn: other modules' "path" values this module imports/uses. Use [] if none. "a dependsOn b" means b is the prerequisite — read b BEFORE a. Example: if \`src/app\` imports from \`src/lib\`, then \`src/app\`.dependsOn includes \`src/lib\`.
+- conceptCards[].evidence MUST be a concrete location in the form \`path:lineStart-lineEnd\` (or just \`path\`) pointing at where the pattern/library actually appears. If you cannot locate it, leave evidence as "" — do NOT fabricate.
+- conceptCards: only patterns/libraries ACTUALLY used. learnMore must be an authoritative/official doc URL; if unsure, leave it "".
+- mermaidArchitecture: use \`graph LR\`, max 12 nodes, group by module. Minimal valid example: \`graph LR\\n  A[frontend] --> B[api]\`
+- Return ONLY the JSON object — no prose, no markdown fences.`;
 
 console.log(
   `📡 Provider: ${useOpenAIProtocol ? `OpenAI-compatible @ ${process.env.OPENAI_BASE_URL}` : "Anthropic native"}`,

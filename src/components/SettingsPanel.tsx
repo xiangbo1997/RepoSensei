@@ -163,7 +163,9 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
                 value={summaryModel}
                 onChange={(e) => setSummaryModel(e.target.value)}
                 placeholder={
-                  provider === "openai" ? "gpt-5.4-mini" : "claude-sonnet-4-6"
+                  provider === "openai"
+                    ? "e.g. gpt-4o-mini (required)"
+                    : "claude-sonnet-4-6"
                 }
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-mono"
               />
@@ -175,7 +177,7 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
                 onChange={(e) => setChatModel(e.target.value)}
                 placeholder={
                   provider === "openai"
-                    ? "gpt-5.4-mini"
+                    ? "e.g. gpt-4o-mini"
                     : "claude-haiku-4-5-20251001"
                 }
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-mono"
