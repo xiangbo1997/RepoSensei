@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChatPanel, type ChatPanelHandle } from "@/components/ChatPanel";
 import { CodeSearch } from "@/components/CodeSearch";
 import { CodeViewer } from "@/components/CodeViewer";
+import { DeepAnalysisPanel } from "@/components/DeepAnalysisPanel";
 import { FileTree } from "@/components/FileTree";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { ResizablePanels } from "@/components/ResizablePanels";
@@ -36,6 +37,11 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [recents, setRecents] = useState<RecentProject[]>([]);
+  // 代码检索索引的后台构建状态：用户提问前需要知道索引是否就绪——
+  // 未就绪时 Q&A 无法 grounding 到真实源码（见 build_grounding_block）。
+  const [indexStatus, setIndexStatus] = useState<"idle" | "building" | "ready">(
+    "idle",
+  );
   const chatRef = useRef<ChatPanelHandle | null>(null);
 
   const refreshRecents = useCallback(async () => {
@@ -59,6 +65,7 @@ export default function Home() {
     setSelectedFile(null);
     setSummaryOpen(false);
     setError(null);
+    setIndexStatus("idle");
   }, []);
 
   const handlePick = useCallback(async () => {
@@ -110,9 +117,14 @@ export default function Home() {
 
       // 后台建代码检索索引（不阻塞 UI）：用户读 summary 时索引已在构建，
       // 等到提问时 Q&A 就能 grounding 到真实源码。失败仅降级，不打断流程。
-      void invoke("index_project", { path: selected }).catch((err) => {
-        console.warn("background index_project failed (non-fatal):", err);
-      });
+      // 状态透传给 UI，让用户知道首问前索引是否就绪（避免「刚选完就问→答得很泛」）。
+      setIndexStatus("building");
+      void invoke("index_project", { path: selected })
+        .then(() => setIndexStatus("ready"))
+        .catch((err) => {
+          console.warn("background index_project failed (non-fatal):", err);
+          setIndexStatus("idle");
+        });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStage("error");
@@ -142,7 +154,10 @@ export default function Home() {
         setFiles(listing.files);
         setStage("ready");
         // 后台增量重建索引：捕获上次打开后文件的变更（增量，未变文件跳过）。
-        void invoke("index_project", { path: r.path }).catch(() => {});
+        setIndexStatus("building");
+        void invoke("index_project", { path: r.path })
+          .then(() => setIndexStatus("ready"))
+          .catch(() => setIndexStatus("idle"));
         void invoke("save_recent", {
           project: {
             path: r.path,
@@ -208,6 +223,29 @@ export default function Home() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate uppercase tracking-widest">
                 {packed.path}
+              </span>
+            </div>
+          )}
+          {stage === "ready" && indexStatus !== "idle" && (
+            <div
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 shrink-0"
+              title={
+                indexStatus === "building"
+                  ? t("index.building")
+                  : t("index.ready")
+              }
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  indexStatus === "building"
+                    ? "bg-amber-500 animate-pulse"
+                    : "bg-emerald-500"
+                }`}
+              />
+              <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                {indexStatus === "building"
+                  ? t("index.building")
+                  : t("index.ready")}
               </span>
             </div>
           )}
@@ -413,8 +451,11 @@ export default function Home() {
               center={
                 <div className="h-full min-h-0 flex flex-col gap-4">
                   {summaryOpen && (
-                    <div className="max-h-[45%] overflow-auto p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none">
+                    <div className="max-h-[45%] overflow-auto p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none space-y-5">
                       <SummaryView summary={summary} />
+                      <div className="pt-4 border-t border-slate-100 dark:border-white/5">
+                        <DeepAnalysisPanel packed={packed} summary={summary} />
+                      </div>
                     </div>
                   )}
                   <div className="flex-1 min-h-0">
@@ -432,6 +473,7 @@ export default function Home() {
                   ref={chatRef}
                   summary={summary}
                   projectRoot={projectRoot}
+                  indexStatus={indexStatus}
                 />
               }
             />

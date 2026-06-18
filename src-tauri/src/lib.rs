@@ -4,7 +4,7 @@ mod llm;
 mod settings;
 mod sidecar;
 
-use llm::{ChatMessage, ProjectSummary};
+use llm::{ChatMessage, DeepInsight, ProjectSummary};
 use sidecar::{FileContent, FileListing, IndexResult, PackedProject, SearchResult};
 
 #[tauri::command]
@@ -50,6 +50,15 @@ async fn summarize_project(
 }
 
 #[tauri::command]
+async fn deep_analyze(
+  packed: PackedProject,
+  summary: ProjectSummary,
+  locale: String,
+) -> Result<Vec<DeepInsight>, String> {
+  llm::deep_analyze(&packed, &summary, &locale).await
+}
+
+#[tauri::command]
 async fn chat_ask(
   window: tauri::Window,
   summary: ProjectSummary,
@@ -87,6 +96,7 @@ pub fn run() {
       list_files,
       read_file,
       summarize_project,
+      deep_analyze,
       chat_ask,
       settings::get_settings,
       settings::save_settings,

@@ -44,6 +44,8 @@ const en: Dict = {
   "chat.hint":
     'Try: "What\'s the entry point?" · "How is auth handled?" · "What should I read first?"',
   "chat.thinking": "Sensei is thinking…",
+  "chat.waitingIndex":
+    "Waiting for the code index to finish so I can cite real source…",
   "chat.input.placeholder": "Ask about this codebase…",
   "chat.send": "Send",
   "chat.error": "⚠️ Error: {message}",
@@ -52,6 +54,9 @@ const en: Dict = {
 
   "panel.files": "Files",
   "panel.chat": "Sensei",
+
+  "index.building": "Indexing code…",
+  "index.ready": "Index ready",
 
   "recents.title": "Recent projects",
   "recents.reindexing": "Re-indexing in background…",
@@ -71,6 +76,18 @@ const en: Dict = {
 
   "summary.toggle.show": "Show summary",
   "summary.toggle.hide": "Hide summary",
+
+  "deep.button": "🔬 Deep analysis",
+  "deep.title": "Deep analysis",
+  "deep.cost":
+    "Runs several focused LLM passes in parallel — uses extra tokens.",
+  "deep.running": "Analyzing from multiple perspectives…",
+  "deep.error": "Deep analysis failed: {message}",
+  "deep.close": "Close",
+  "deep.perspective.dataflow": "Data flow",
+  "deep.perspective.security": "Security surface",
+  "deep.perspective.testing": "Testing & quality",
+  "deep.perspective.failed": "(could not be generated)",
 
   "search.title": "Search code",
   "search.placeholder": "Search symbols / code…",
@@ -140,6 +157,7 @@ const zh: Dict = {
   "chat.hint":
     "试试问：「入口在哪？」 · 「认证是怎么做的？」 · 「应该先读哪个文件？」",
   "chat.thinking": "师父思考中…",
+  "chat.waitingIndex": "等代码索引建完，好引用真实源码再回答…",
   "chat.input.placeholder": "针对这个项目提问…",
   "chat.send": "发送",
   "chat.error": "⚠️ 出错了：{message}",
@@ -148,6 +166,9 @@ const zh: Dict = {
 
   "panel.files": "文件",
   "panel.chat": "师父",
+
+  "index.building": "正在建立代码索引…",
+  "index.ready": "索引已就绪",
 
   "recents.title": "最近的项目",
   "recents.reindexing": "后台重建索引中…",
@@ -167,6 +188,17 @@ const zh: Dict = {
 
   "summary.toggle.show": "展开总结",
   "summary.toggle.hide": "收起总结",
+
+  "deep.button": "🔬 深度分析",
+  "deep.title": "深度分析",
+  "deep.cost": "并行跑多个专项 LLM 分析 — 会额外消耗 token。",
+  "deep.running": "正在从多个视角分析…",
+  "deep.error": "深度分析失败：{message}",
+  "deep.close": "关闭",
+  "deep.perspective.dataflow": "数据流",
+  "deep.perspective.security": "安全面",
+  "deep.perspective.testing": "测试与质量",
+  "deep.perspective.failed": "（未能生成）",
 
   "search.title": "搜索代码",
   "search.placeholder": "搜索符号 / 代码…",

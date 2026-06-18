@@ -56,6 +56,14 @@ jobs:
           toolchain: stable
           cache: true
 
+      # tauri-build 的 build.rs 会校验 tauri.conf.json 里声明的 bundle.resources
+      # 目录（resources/）存在。该目录是 release 构建产物（见 scripts/prepare-sidecar.mjs），
+      # 已 gitignore 不入库。CI 只跑 cargo test/clippy，无需真实资源内容——建空占位目录
+      # 即可满足存在性校验，省下下载 120MB Node + 装 repomix 的时间。
+      - name: Create placeholder bundle resources dir
+        shell: bash
+        run: mkdir -p src-tauri/resources/sidecar
+
       - name: Run tests
         run: cargo test --all --all-features
         working-directory: src-tauri
