@@ -4,14 +4,31 @@
 //!   - list_files: enumerate the file tree (skipping noise + binaries)
 //!   - read_file:  return one file's UTF-8 contents
 
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::process::Stdio;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
+
+/// 打包/索引类操作（repomix + embedding）在大仓库上很慢，给宽松超时。
+const TIMEOUT_HEAVY: Duration = Duration::from_secs(300);
+/// 列目录/读文件/检索这类轻操作，超过 60s 基本意味着卡死，快速失败。
+const TIMEOUT_LIGHT: Duration = Duration::from_secs(60);
+
+/// spawn 失败时的友好错误：node 不在 PATH 是最常见的首次运行问题，单独给可操作提示。
+fn spawn_error_message(e: &std::io::Error) -> String {
+  if e.kind() == ErrorKind::NotFound {
+    "Node.js runtime not found — RepoSensei requires Node.js 22+ on PATH (https://nodejs.org)"
+      .to_string()
+  } else {
+    format!("failed to spawn node sidecar: {e}")
+  }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PackedProject {
@@ -126,7 +143,17 @@ fn resolve_node_command(app: &AppHandle) -> String {
 
 /// Generic call: spawn node sidecar, write one JSON line, read one JSON
 /// response, then kill the child. Deserialize the response data into T.
-async fn call_sidecar<T>(app: &AppHandle, cmd: &str, args: serde_json::Value) -> Result<T, String>
+///
+/// 整个 spawn→write→read 往返用 `tokio::time::timeout` 包裹（`timeout` 按操作轻重
+/// 传入）：超时则 kill 子进程并返回明确的超时错误，避免卡死的 node 挂起整个命令。
+/// Command 设 `kill_on_drop(true)`：若本 future 在打包中途被 drop（如前端取消），
+/// 底层子进程随之被回收，不会成为孤儿 node 进程。
+async fn call_sidecar<T>(
+  app: &AppHandle,
+  cmd: &str,
+  args: serde_json::Value,
+  timeout: Duration,
+) -> Result<T, String>
 where
   T: serde::de::DeserializeOwned,
 {
@@ -141,8 +168,9 @@ where
     .stdin(Stdio::piped())
     .stdout(Stdio::piped())
     .stderr(Stdio::piped())
+    .kill_on_drop(true)
     .spawn()
-    .map_err(|e| format!("failed to spawn node sidecar: {e}"))?;
+    .map_err(|e| spawn_error_message(&e))?;
 
   let request = serde_json::json!({
       "id": "req-1",
@@ -150,26 +178,42 @@ where
       "args": args,
   });
 
-  if let Some(stdin) = child.stdin.as_mut() {
-    stdin
-      .write_all(format!("{}\n", request).as_bytes())
+  // 往返（写请求 + 读一行响应）整体套超时。超时分支落到下面统一 kill + 报错。
+  let roundtrip = async {
+    if let Some(stdin) = child.stdin.as_mut() {
+      stdin
+        .write_all(format!("{}\n", request).as_bytes())
+        .await
+        .map_err(|e| format!("write to sidecar stdin failed: {e}"))?;
+    }
+
+    let stdout = child
+      .stdout
+      .take()
+      .ok_or_else(|| "sidecar stdout missing".to_string())?;
+    let mut reader = BufReader::new(stdout).lines();
+
+    reader
+      .next_line()
       .await
-      .map_err(|e| format!("write to sidecar stdin failed: {e}"))?;
-  }
+      .map_err(|e| format!("read sidecar stdout failed: {e}"))?
+      .ok_or_else(|| "sidecar produced no output".to_string())
+  };
 
-  let stdout = child
-    .stdout
-    .take()
-    .ok_or_else(|| "sidecar stdout missing".to_string())?;
-  let mut reader = BufReader::new(stdout).lines();
-
-  let line = reader
-    .next_line()
-    .await
-    .map_err(|e| format!("read sidecar stdout failed: {e}"))?
-    .ok_or_else(|| "sidecar produced no output".to_string())?;
-
-  let _ = child.kill().await;
+  let line = match tokio::time::timeout(timeout, roundtrip).await {
+    Ok(res) => {
+      let _ = child.kill().await;
+      res?
+    }
+    Err(_) => {
+      // 超时：先杀掉卡死的子进程，再返回可读的超时错误。
+      let _ = child.kill().await;
+      return Err(format!(
+        "sidecar '{cmd}' timed out after {}s",
+        timeout.as_secs()
+      ));
+    }
+  };
 
   let resp: SidecarResponse = serde_json::from_str(&line)
     .map_err(|e| format!("invalid sidecar response: {e}\nraw: {}", line))?;
@@ -185,7 +229,13 @@ where
 }
 
 pub async fn pack_project(app: &AppHandle, project_path: String) -> Result<PackedProject, String> {
-  call_sidecar(app, "pack", serde_json::json!({ "path": project_path })).await
+  call_sidecar(
+    app,
+    "pack",
+    serde_json::json!({ "path": project_path }),
+    TIMEOUT_HEAVY,
+  )
+  .await
 }
 
 pub async fn list_files(app: &AppHandle, project_path: String) -> Result<FileListing, String> {
@@ -193,6 +243,7 @@ pub async fn list_files(app: &AppHandle, project_path: String) -> Result<FileLis
     app,
     "list_files",
     serde_json::json!({ "path": project_path }),
+    TIMEOUT_LIGHT,
   )
   .await
 }
@@ -206,6 +257,7 @@ pub async fn read_file(
     app,
     "read_file",
     serde_json::json!({ "root": root, "relative": relative }),
+    TIMEOUT_LIGHT,
   )
   .await
 }
@@ -215,6 +267,7 @@ pub async fn index_project(app: &AppHandle, project_path: String) -> Result<Inde
     app,
     "index_project",
     serde_json::json!({ "path": project_path }),
+    TIMEOUT_HEAVY,
   )
   .await
 }
@@ -229,6 +282,7 @@ pub async fn search_code(
     app,
     "search_code",
     serde_json::json!({ "path": project_path, "query": query, "limit": limit }),
+    TIMEOUT_LIGHT,
   )
   .await
 }

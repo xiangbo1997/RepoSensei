@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useT } from "@/lib/i18n";
 import { buildTour } from "@/lib/tour";
 import type { ProjectSummary } from "@/lib/types";
@@ -7,15 +8,45 @@ import { MermaidView } from "./MermaidView";
 
 interface Props {
   summary: ProjectSummary;
+  /** 用于导出文件名 <projectName>-summary.md；缺省回退为 "repo"。 */
+  projectName?: string;
 }
 
-export function SummaryView({ summary }: Props) {
+export function SummaryView({ summary, projectName }: Props) {
   const { t } = useT();
+  const [exported, setExported] = useState(false);
   const tour = buildTour(summary.modules);
   // 仅当 LLM 给出了模块依赖（产生多于一层）时才展示学习路径，否则与 Modules 冗余。
   const showTour = tour.some((s) => s.layer > 0);
+
+  const handleExport = () => {
+    const md = summaryToMarkdown(summary);
+    const base = (projectName ?? "repo").trim() || "repo";
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${base}-summary.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setExported(true);
+    setTimeout(() => setExported(false), 1500);
+  };
+
   return (
     <div className="space-y-10 py-2">
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={handleExport}
+          className="px-3 py-1.5 text-[11px] font-bold rounded-xl bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10 hover:border-amber-500/50 hover:text-amber-600 dark:hover:text-amber-400 transition-colors"
+        >
+          {exported ? t("summary.exported") : `⬇ ${t("summary.export")}`}
+        </button>
+      </div>
+
       <section className="animate-in" style={{ animationDelay: "0ms" }}>
         <h2 className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 mb-4">
           {t("summary.overview")}
@@ -112,7 +143,7 @@ export function SummaryView({ summary }: Props) {
                   {m.path}
                 </div>
                 <div className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono">
-                  {m.keyFiles.length} Files
+                  {t("summary.moduleFiles", { n: m.keyFiles.length })}
                 </div>
               </div>
               <div className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
@@ -178,4 +209,71 @@ export function SummaryView({ summary }: Props) {
       )}
     </div>
   );
+}
+
+/** 把 ProjectSummary 序列化为结构化 Markdown 文档，供离线保存/分享。 */
+function summaryToMarkdown(summary: ProjectSummary): string {
+  const lines: string[] = [];
+  lines.push("# RepoSensei Summary", "");
+
+  lines.push("## Overview", "", summary.overview.trim(), "");
+
+  if (summary.techStack.length > 0) {
+    lines.push("## Tech Stack", "");
+    for (const s of summary.techStack) lines.push(`- ${s}`);
+    lines.push("");
+  }
+
+  if (summary.entryPoints.length > 0) {
+    lines.push("## Entry Points", "");
+    for (const ep of summary.entryPoints) lines.push(`- \`${ep}\``);
+    lines.push("");
+  }
+
+  if (summary.modules.length > 0) {
+    lines.push("## Modules", "");
+    for (const m of summary.modules) {
+      lines.push(`### \`${m.path}\``, "", m.purpose.trim(), "");
+      if (m.keyFiles.length > 0) {
+        lines.push("Key files:", "");
+        for (const f of m.keyFiles) lines.push(`- \`${f}\``);
+        lines.push("");
+      }
+    }
+  }
+
+  if (summary.mermaidArchitecture.trim()) {
+    lines.push(
+      "## Architecture",
+      "",
+      "```mermaid",
+      summary.mermaidArchitecture.trim(),
+      "```",
+      "",
+    );
+  }
+
+  const tour = buildTour(summary.modules);
+  if (tour.some((s) => s.layer > 0)) {
+    lines.push("## Suggested Reading Order", "");
+    tour.forEach((step, i) => {
+      lines.push(`${i + 1}. \`${step.module.path}\` — ${step.module.purpose}`);
+    });
+    lines.push("");
+  }
+
+  if (summary.conceptCards.length > 0) {
+    lines.push("## Concepts to Learn", "");
+    for (const c of summary.conceptCards) {
+      lines.push(`### ${c.name}`, "", c.oneLiner.trim(), "");
+      lines.push(`- Found: ${c.evidence}`);
+      if (c.learnMore) {
+        const label = c.verified ? "Official docs" : "Learn more";
+        lines.push(`- ${label}: ${c.learnMore}`);
+      }
+      lines.push("");
+    }
+  }
+
+  return `${lines.join("\n").trimEnd()}\n`;
 }

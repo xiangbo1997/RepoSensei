@@ -1,9 +1,16 @@
 "use client";
 
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { errMsg } from "@/lib/errMsg";
 import { useT } from "@/lib/i18n";
 import type { LlmProvider, SettingsView } from "@/lib/types";
+
+interface FieldErrors {
+  baseUrl?: string;
+  apiKey?: string;
+  summaryModel?: string;
+}
 
 interface Props {
   onClose: () => void;
@@ -27,6 +34,7 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
   const [testMsg, setTestMsg] = useState<{ ok: boolean; text: string } | null>(
     null,
   );
+  const [errors, setErrors] = useState<FieldErrors>({});
 
   useEffect(() => {
     void (async () => {
@@ -46,7 +54,33 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
     })();
   }, []);
 
+  // Esc 关闭面板。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  /** 保存前校验：openai 需要 baseUrl+summaryModel；已存 key 时 key 可空（表示保持不变）。 */
+  const validate = (): FieldErrors => {
+    const next: FieldErrors = {};
+    if (provider === "openai") {
+      if (!baseUrl.trim()) next.baseUrl = t("settings.error.baseUrlRequired");
+      if (!summaryModel.trim())
+        next.summaryModel = t("settings.error.modelRequired");
+    }
+    if (!hasKey && !apiKey.trim()) {
+      next.apiKey = t("settings.error.keyRequired");
+    }
+    return next;
+  };
+
   const save = async () => {
+    const found = validate();
+    setErrors(found);
+    if (Object.keys(found).length > 0) return;
     setSaving(true);
     setSaved(false);
     setTestMsg(null);
@@ -66,10 +100,7 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
       if (apiKey) setHasKey(true);
       onSaved?.();
     } catch (e) {
-      setTestMsg({
-        ok: false,
-        text: e instanceof Error ? e.message : String(e),
-      });
+      setTestMsg({ ok: false, text: errMsg(e) });
     } finally {
       setSaving(false);
     }
@@ -84,18 +115,29 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
     } catch (e) {
       setTestMsg({
         ok: false,
-        text: t("settings.test.fail", {
-          message: e instanceof Error ? e.message : String(e),
-        }),
+        text: t("settings.test.fail", { message: errMsg(e) }),
       });
     } finally {
       setTesting(false);
     }
   };
 
+  // 点击遮罩关闭；点击面板本身不关闭。
+  const onBackdrop = useCallback(() => onClose(), [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in">
-      <div className="w-full max-w-lg max-h-[85vh] overflow-auto p-8 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl">
+    // biome-ignore lint/a11y/noStaticElementInteractions: 遮罩层仅承载「点击关闭」，Esc 提供键盘等价关闭
+    // biome-ignore lint/a11y/useKeyWithClickEvents: 键盘关闭由上方 Escape 监听处理
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm animate-in"
+      onClick={onBackdrop}
+    >
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: onClick 仅阻止冒泡以避免点面板误关闭 */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation 无需键盘等价 */}
+      <div
+        className="w-full max-w-lg max-h-[85vh] overflow-auto p-8 rounded-[2rem] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-slate-50">
             ⚙️ {t("settings.title")}
@@ -134,10 +176,18 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
               <input
                 type="text"
                 value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                onChange={(e) => {
+                  setBaseUrl(e.target.value);
+                  setErrors((prev) => ({ ...prev, baseUrl: undefined }));
+                }}
                 placeholder={t("settings.baseUrl.placeholder")}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50"
+                className={`w-full px-3 py-2 text-sm rounded-xl border bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50 ${
+                  errors.baseUrl
+                    ? "border-red-400 dark:border-red-500/60"
+                    : "border-slate-200 dark:border-white/10"
+                }`}
               />
+              {errors.baseUrl && <FieldError message={errors.baseUrl} />}
             </Field>
           )}
 
@@ -145,10 +195,18 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
             <input
               type="password"
               value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              onChange={(e) => {
+                setApiKey(e.target.value);
+                setErrors((prev) => ({ ...prev, apiKey: undefined }));
+              }}
               placeholder={t("settings.apiKey.placeholder")}
-              className="w-full px-3 py-2 text-sm rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-mono"
+              className={`w-full px-3 py-2 text-sm rounded-xl border bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-mono ${
+                errors.apiKey
+                  ? "border-red-400 dark:border-red-500/60"
+                  : "border-slate-200 dark:border-white/10"
+              }`}
             />
+            {errors.apiKey && <FieldError message={errors.apiKey} />}
             {hasKey && (
               <div className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">
                 {t("settings.apiKey.set", { hint: keyHint })}
@@ -161,14 +219,24 @@ export function SettingsPanel({ onClose, onSaved }: Props) {
               <input
                 type="text"
                 value={summaryModel}
-                onChange={(e) => setSummaryModel(e.target.value)}
+                onChange={(e) => {
+                  setSummaryModel(e.target.value);
+                  setErrors((prev) => ({ ...prev, summaryModel: undefined }));
+                }}
                 placeholder={
                   provider === "openai"
                     ? "e.g. gpt-4o-mini (required)"
                     : "claude-sonnet-4-6"
                 }
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 dark:border-white/10 bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-mono"
+                className={`w-full px-3 py-2 text-xs rounded-xl border bg-white dark:bg-slate-950 focus:outline-none focus:ring-2 focus:ring-amber-500/50 font-mono ${
+                  errors.summaryModel
+                    ? "border-red-400 dark:border-red-500/60"
+                    : "border-slate-200 dark:border-white/10"
+                }`}
               />
+              {errors.summaryModel && (
+                <FieldError message={errors.summaryModel} />
+              )}
             </Field>
             <Field label={t("settings.chatModel")}>
               <input
@@ -238,6 +306,14 @@ function Field({
         {label}
       </div>
       {children}
+    </div>
+  );
+}
+
+function FieldError({ message }: { message: string }) {
+  return (
+    <div className="text-[11px] text-red-600 dark:text-red-400 mt-1">
+      {message}
     </div>
   );
 }

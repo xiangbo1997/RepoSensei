@@ -17,7 +17,7 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { isGeneratedFile, isNoiseDir } from "./noise-filter.mjs";
+import { isGeneratedFile, isNoiseDir, isSecretFile } from "./noise-filter.mjs";
 import {
   blobToVector,
   cosineSimilarity,
@@ -126,6 +126,8 @@ async function collectFiles(root) {
       if (!entry.isFile()) continue;
       const rel = relDir ? `${relDir}/${name}` : name;
       if (isGeneratedFile(rel)) continue;
+      // 密钥/凭据文件绝不进检索库（与打包/文件树共用 noise-filter 单一真相源）。
+      if (isSecretFile(rel)) continue;
       const ext = name.split(".").pop()?.toLowerCase() ?? "";
       if (!INDEXABLE_EXT.has(ext)) continue;
       out.push(rel);
@@ -136,7 +138,8 @@ async function collectFiles(root) {
 }
 
 // schema 版本：列结构变更时递增，旧索引会被丢弃重建，避免列数不匹配的 INSERT 失败。
-const SCHEMA_VERSION = "3";
+// v4：files 表新增 mtime_ms / size 列，支撑「mtime+size 未变则跳过读+hash」的短路。
+const SCHEMA_VERSION = "4";
 
 /** 打开（或新建）索引 db，建表。若 schema 版本不符则清空重建。 */
 function openDb(dbFile) {
@@ -150,7 +153,12 @@ function openDb(dbFile) {
     db.exec("DROP TABLE IF EXISTS chunks; DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS vectors;");
   }
   db.exec(`
-    CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, hash TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS files (
+      path TEXT PRIMARY KEY,
+      hash TEXT NOT NULL,
+      mtime_ms REAL NOT NULL DEFAULT 0,
+      size INTEGER NOT NULL DEFAULT 0
+    );
     CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
       path, symbols, content,
       start_line UNINDEXED, end_line UNINDEXED,
@@ -181,10 +189,10 @@ export async function indexProject(projectPath) {
 
   const db = openDb(dbFile);
   try {
-    // 读取上次索引的 path→hash 快照。
-    const prevHashes = new Map();
-    for (const row of db.prepare("SELECT path, hash FROM files").all()) {
-      prevHashes.set(row.path, row.hash);
+    // 读取上次索引的 path→{hash, mtimeMs, size} 快照，供增量对比。
+    const prevMeta = new Map();
+    for (const row of db.prepare("SELECT path, hash, mtime_ms, size FROM files").all()) {
+      prevMeta.set(row.path, { hash: row.hash, mtimeMs: row.mtime_ms, size: row.size });
     }
 
     const files = await collectFiles(projectPath);
@@ -197,7 +205,7 @@ export async function indexProject(projectPath) {
     const deleteVec = db.prepare("DELETE FROM vectors WHERE rowid = ?");
     const selectRowids = db.prepare("SELECT rowid FROM chunks WHERE path = ?");
     const upsertFile = db.prepare(
-      "INSERT OR REPLACE INTO files (path, hash) VALUES (?, ?)",
+      "INSERT OR REPLACE INTO files (path, hash, mtime_ms, size) VALUES (?, ?, ?, ?)",
     );
     const deleteFile = db.prepare("DELETE FROM files WHERE path = ?");
 
@@ -220,6 +228,18 @@ export async function indexProject(projectPath) {
           continue;
         }
         if (s.size > MAX_FILE_BYTES) continue;
+
+        seen.add(rel);
+        const prev = prevMeta.get(rel);
+
+        // 快速短路：mtime 与 size 都未变 → 内容极大概率未变，直接复用，
+        // 省掉整文件读取 + SHA-256（增量索引最热路径）。
+        if (prev && prev.mtimeMs === s.mtimeMs && prev.size === s.size) {
+          reused++;
+          indexedFiles++;
+          continue;
+        }
+
         let buf;
         try {
           buf = await readFile(abs);
@@ -229,11 +249,12 @@ export async function indexProject(projectPath) {
         const sample = buf.subarray(0, Math.min(buf.length, 8192));
         if (sample.includes(0)) continue;
 
-        seen.add(rel);
         const hash = createHash("sha256").update(buf).digest("hex");
 
-        // 内容未变 → 跳过重建，保留旧 chunks 与向量。
-        if (prevHashes.get(rel) === hash) {
+        // mtime/size 变了但内容 hash 相同（如 touch / 格式化回退）→ 仍复用块，
+        // 但刷新 mtime/size 快照，避免下次又落到读+hash 慢路径。
+        if (prev && prev.hash === hash) {
+          upsertFile.run(rel, hash, s.mtimeMs, s.size);
           reused++;
           indexedFiles++;
           continue;
@@ -246,19 +267,19 @@ export async function indexProject(projectPath) {
         deleteChunks.run(rel);
         const content = buf.toString("utf8");
         for (const c of chunkFile(rel, content)) {
-          insertChunk.run(c.path, c.symbols, c.content, c.startLine, c.endLine);
-          const rowid = Number(db.prepare("SELECT last_insert_rowid() AS id").get().id);
+          const info = insertChunk.run(c.path, c.symbols, c.content, c.startLine, c.endLine);
+          const rowid = Number(info.lastInsertRowid);
           // 向量化输入加上文件路径前缀，帮助语义检索区分同名符号。
           pendingEmbed.push({ rowid, text: `${c.path}\n${c.content}` });
           chunkCount++;
         }
-        upsertFile.run(rel, hash);
+        upsertFile.run(rel, hash, s.mtimeMs, s.size);
         reindexed++;
         indexedFiles++;
       }
 
       // 已从磁盘删除的文件 → 清理其 chunks、向量与记录。
-      for (const oldPath of prevHashes.keys()) {
+      for (const oldPath of prevMeta.keys()) {
         if (!seen.has(oldPath)) {
           for (const r of selectRowids.all(oldPath)) {
             deleteVec.run(r.rowid);
@@ -410,6 +431,9 @@ export async function searchCode(projectPath, question, limit = 6) {
   const db = new DatabaseSync(dbFile, { readOnly: true });
   try {
     const wide = Math.max(limit * 4, 24);
+    // 向量臂只在 FTS 候选集内做余弦，故候选集要拉宽（~200），
+    // 保证语义相关但 bm25 排名靠后的块也进入向量重排范围。
+    const FTS_CANDIDATES = 200;
 
     // ── FTS5 臂：bm25 + 多信号重排 ──────────────────────────────────
     const stmt = db.prepare(`
@@ -419,7 +443,7 @@ export async function searchCode(projectPath, question, limit = 6) {
       ORDER BY rank
       LIMIT ?
     `);
-    const candidates = stmt.all(ftsQuery, wide);
+    const candidates = stmt.all(ftsQuery, FTS_CANDIDATES);
 
     const lowTokens = tokens.map((t) => t.toLowerCase());
     const passesFilters = (r) => {
@@ -449,22 +473,39 @@ export async function searchCode(projectPath, question, limit = 6) {
         }
         return { row: r, ftsScore: score };
       })
-      .sort((a, b) => b.ftsScore - a.ftsScore);
+      .sort((a, b) => b.ftsScore - a.ftsScore)
+      .slice(0, wide);
 
-    // ── 向量臂：query embedding × 全库向量余弦（仅当有向量且 embedding 可用）──
+    // ── 向量臂：仅对 FTS 候选集内的块做余弦，避免全库扫描 ──────────────
+    // 候选为空（纯语义查询，FTS 无命中）时回退全库扫描，保住语义召回。
     let vecRanked = [];
     const hasVectors =
       db.prepare("SELECT count(*) AS n FROM vectors").get().n > 0;
     if (hasVectors && embeddingAvailable()) {
       const qvec = await embedOne(question);
       if (qvec) {
-        const rows = db
-          .prepare(
-            `SELECT c.rowid AS rowid, c.path AS path, c.content AS content,
-                    c.start_line AS start_line, c.end_line AS end_line, v.vec AS vec
-             FROM vectors v JOIN chunks c ON c.rowid = v.rowid`,
-          )
-          .all();
+        let rows;
+        if (candidates.length > 0) {
+          // 只取候选块的向量（按 rowid IN (...)），把余弦计算量钉在候选集内。
+          const ids = candidates.map((c) => c.rowid);
+          const placeholders = ids.map(() => "?").join(",");
+          rows = db
+            .prepare(
+              `SELECT c.rowid AS rowid, c.path AS path, c.content AS content,
+                      c.start_line AS start_line, c.end_line AS end_line, v.vec AS vec
+               FROM vectors v JOIN chunks c ON c.rowid = v.rowid
+               WHERE c.rowid IN (${placeholders})`,
+            )
+            .all(...ids);
+        } else {
+          rows = db
+            .prepare(
+              `SELECT c.rowid AS rowid, c.path AS path, c.content AS content,
+                      c.start_line AS start_line, c.end_line AS end_line, v.vec AS vec
+               FROM vectors v JOIN chunks c ON c.rowid = v.rowid`,
+            )
+            .all();
+        }
         vecRanked = rows
           .filter(passesFilters)
           .map((r) => ({ row: r, sim: cosineSimilarity(qvec, blobToVector(r.vec)) }))

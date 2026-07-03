@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   isGeneratedFile,
   isNoiseDir,
+  isSecretFile,
   repomixIgnoreGlobs,
 } from "./noise-filter.mjs";
 
@@ -64,6 +65,52 @@ describe("isNoiseDir", () => {
   });
 });
 
+describe("isSecretFile", () => {
+  test("识别密钥/凭据文件（含子目录路径）", () => {
+    const secrets = [
+      ".env",
+      ".env.local",
+      ".env.production",
+      "config/.env.staging",
+      "certs/server.pem",
+      "keys/private.key",
+      "home/.ssh/id_rsa",
+      "home/.ssh/id_rsa.pub",
+      "home/.ssh/id_ed25519",
+      "store/keystore.p12",
+      "store/cert.pfx",
+      "gcp/credentials.json",
+      "gcp/service-account-prod.json",
+      "project/.npmrc",
+      "home/.netrc",
+      "config/secrets.json",
+      "config/secrets.yaml",
+      "config/secrets.yml",
+      "config/secrets.toml",
+    ];
+    for (const f of secrets) {
+      expect(isSecretFile(f), `${f} 应判为密钥文件`).toBe(true);
+    }
+  });
+
+  test("不误伤普通源码/配置文件", () => {
+    const safe = [
+      "src/env.ts",
+      "src/environment.ts",
+      "docs/keyboard.md",
+      "lib/keychain.rs",
+      "config/settings.json",
+      "config/app.yaml",
+      "components/EnvBadge.tsx",
+      "public/logo.pem.png",   // basename 是 logo.pem.png，不以 .pem 结尾
+      "src/credentials.ts",    // .ts 非 .json
+    ];
+    for (const f of safe) {
+      expect(isSecretFile(f), `${f} 不应判为密钥文件`).toBe(false);
+    }
+  });
+});
+
 describe("repomixIgnoreGlobs", () => {
   test("产出 glob 含目录与生成文件规则", () => {
     const globs = repomixIgnoreGlobs();
@@ -71,5 +118,13 @@ describe("repomixIgnoreGlobs", () => {
     expect(globs).toContain("**/*.pb.go");
     expect(globs).toContain("**/*.generated.*");
     expect(globs.every((g) => typeof g === "string" && g.length > 0)).toBe(true);
+  });
+
+  test("含密钥文件 glob（打包排除）", () => {
+    const globs = repomixIgnoreGlobs();
+    expect(globs).toContain("**/.env");
+    expect(globs).toContain("**/.env.*");
+    expect(globs).toContain("**/*.pem");
+    expect(globs).toContain("**/service-account*.json");
   });
 });

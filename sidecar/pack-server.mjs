@@ -11,6 +11,7 @@
  */
 import { randomUUID } from "node:crypto";
 import {
+  lstat,
   mkdtemp,
   readdir,
   readFile,
@@ -23,6 +24,7 @@ import readline from "node:readline";
 import {
   isGeneratedFile,
   isNoiseDir,
+  isSecretFile,
   repomixIgnoreGlobs,
 } from "./noise-filter.mjs";
 import { indexProject, searchCode } from "./code-index.mjs";
@@ -164,6 +166,8 @@ async function walk(absDir, relDir, out) {
   } catch {
     return;
   }
+  // 先收集本层待 stat 的文件，再并行 stat，避免逐个 await 串行拖慢大目录。
+  const pendingFiles = [];
   for (const entry of entries) {
     if (out.length >= MAX_FILES) return;
     const name = entry.name;
@@ -185,14 +189,24 @@ async function walk(absDir, relDir, out) {
       // 生成文件（protobuf/codegen/mock）不进文件树——它们无手写逻辑，
       // 只会让用户在树里翻到一堆 stub。与 repomix 打包过滤保持一致。
       if (isGeneratedFile(rel)) continue;
-      try {
-        const s = await stat(path.join(absDir, name));
-        if (s.size > 1024 * 1024) continue; // skip files > 1MB
-        out.push({ path: rel, size: s.size });
-      } catch {
-        // unreadable, skip
-      }
+      // 密钥/凭据文件绝不进树（与打包/索引共用 noise-filter 单一真相源）。
+      if (isSecretFile(rel)) continue;
+      pendingFiles.push({ name, rel });
     }
+  }
+  const stats = await Promise.all(
+    pendingFiles.map((f) =>
+      stat(path.join(absDir, f.name)).then(
+        (s) => ({ f, s }),
+        () => null, // unreadable, skip
+      ),
+    ),
+  );
+  for (const res of stats) {
+    if (out.length >= MAX_FILES) return;
+    if (!res) continue;
+    if (res.s.size > 1024 * 1024) continue; // skip files > 1MB
+    out.push({ path: res.f.rel, size: res.s.size });
   }
 }
 
@@ -204,14 +218,27 @@ async function readSingleFile(root, relative) {
   if (!root || !relative) {
     throw new Error("root and relative are required");
   }
-  // Reject path traversal.
+  // 拒绝路径穿越：先规范化，挡掉显式 .. 与绝对路径。
   const safeRel = path.normalize(relative);
-  if (safeRel.startsWith("..") || path.isAbsolute(safeRel)) {
+  if (safeRel === ".." || safeRel.startsWith(`..${path.sep}`) || path.isAbsolute(safeRel)) {
     throw new Error("invalid relative path");
   }
-  const abs = path.join(root, safeRel);
-  if (!abs.startsWith(path.resolve(root))) {
+  // 用 resolve 后的绝对路径 + 分隔符边界判定包含关系，
+  // 避免 raw startsWith 让 /proj 命中兄弟目录 /proj-secret。
+  const resolvedRoot = path.resolve(root);
+  const abs = path.resolve(resolvedRoot, safeRel);
+  if (abs !== resolvedRoot && !abs.startsWith(resolvedRoot + path.sep)) {
     throw new Error("path escapes project root");
+  }
+  // 密钥/凭据文件拒读（与打包/索引共用 noise-filter 单一真相源）。
+  if (isSecretFile(safeRel)) {
+    throw new Error("refusing to read secret file");
+  }
+  // lstat 不跟随符号链接：树内指向外部的 symlink 会被识别并拒绝，
+  // 防止「相对路径合法但实际目标在项目外」的逃逸。
+  const info = await lstat(abs);
+  if (info.isSymbolicLink()) {
+    throw new Error("symlinks are not allowed");
   }
   const s = await stat(abs);
   if (s.size > 1024 * 1024) {

@@ -78,6 +78,13 @@ async fn chat_ask(
   .await
 }
 
+/// 取消进行中的 chat 流式回答。前端点「停止」时调用；置取消标志，
+/// 正在跑的 SSE 循环在下一个 chunk 边界感知并提前收尾。
+#[tauri::command]
+fn chat_cancel() {
+  llm::cancel_chat();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -98,6 +105,7 @@ pub fn run() {
       summarize_project,
       deep_analyze,
       chat_ask,
+      chat_cancel,
       settings::get_settings,
       settings::save_settings,
       settings::test_connection,
@@ -105,6 +113,8 @@ pub fn run() {
       history::get_recents,
       history::remove_recent,
       history::path_exists,
+      history::save_chat,
+      history::get_chat,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

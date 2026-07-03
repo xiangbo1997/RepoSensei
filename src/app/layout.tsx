@@ -1,5 +1,6 @@
 "use client";
 import { Geist, Geist_Mono } from "next/font/google";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { LocaleProvider } from "@/components/LocaleProvider";
 import "@/styles/globals.css";
 
@@ -23,7 +24,9 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <LocaleProvider>{children}</LocaleProvider>
+        <ErrorBoundary>
+          <LocaleProvider>{children}</LocaleProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

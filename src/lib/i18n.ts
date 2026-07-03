@@ -17,11 +17,20 @@ const en: Dict = {
 
   "dialog.title": "Pick a Git project to learn",
   "cta.pickProject": "📁 Pick a local project to analyze",
+  "cta.pickProject.sub":
+    "Select a local directory to begin your repository analysis",
+
+  "onboard.noKey":
+    "No API key configured yet — set one up first, or analysis will fail.",
+  "onboard.noKey.cta": "Open Settings",
 
   "stage.picking": "Waiting for you to pick a folder…",
   "stage.packing": "Packing the repository with Repomix…",
   "stage.summarizing": "Asking the model to read it for you…",
   "stage.tokens": "{files} files · {tokens} tokens",
+  "stage.elapsed": "{seconds}s elapsed",
+  "stage.slow":
+    "Taking longer than usual — large repos and busy models need more time…",
 
   "error.title": "Something went wrong",
   "error.retry": "Try another project",
@@ -48,9 +57,18 @@ const en: Dict = {
     "Waiting for the code index to finish so I can cite real source…",
   "chat.input.placeholder": "Ask about this codebase…",
   "chat.send": "Send",
+  "chat.stop": "Stop",
+  "chat.copy": "Copy",
+  "chat.copied": "Copied ✓",
+  "chat.retry": "Retry",
+  "chat.askNow": "Ask now anyway",
   "chat.error": "⚠️ Error: {message}",
 
   "mermaid.failed": "Mermaid render failed — show source",
+  "mermaid.zoomIn": "Zoom in",
+  "mermaid.zoomOut": "Zoom out",
+  "mermaid.zoomReset": "Reset zoom",
+  "mermaid.export": "Export SVG",
 
   "panel.files": "Files",
   "panel.chat": "Sensei",
@@ -73,9 +91,19 @@ const en: Dict = {
   "code.stats": "{lines} lines · {bytes} B",
   "code.askAboutFile": "💬 Ask about this file",
   "code.askPrompt": "[{path}] What does this file do? Explain it to me.",
+  "code.actions": "Actions",
+  "code.askSelection": "Ask AI about selection",
+  "code.copy": "Copy",
+  "code.copied": "Copied ✓",
+  "code.truncated":
+    "Large file — showing first {shown} of {total} lines for performance",
+  "code.showAll": "Show full file",
 
   "summary.toggle.show": "Show summary",
   "summary.toggle.hide": "Hide summary",
+  "summary.export": "⬇ Export Markdown",
+  "summary.exported": "Exported ✓",
+  "summary.moduleFiles": "{n} files",
 
   "deep.button": "🔬 Deep analysis",
   "deep.title": "Deep analysis",
@@ -88,6 +116,8 @@ const en: Dict = {
   "deep.perspective.security": "Security surface",
   "deep.perspective.testing": "Testing & quality",
   "deep.perspective.failed": "(could not be generated)",
+  "deep.unavailable.restored":
+    "Deep analysis needs the packed source — re-analyze this project to enable it.",
 
   "search.title": "Search code",
   "search.placeholder": "Search symbols / code…",
@@ -118,8 +148,11 @@ const en: Dict = {
   "settings.hint.byok":
     "Your key is stored locally and never leaves your machine.",
   "settings.needed": "Set your API key in Settings to begin.",
+  "settings.error.keyRequired": "API key is required",
+  "settings.error.baseUrlRequired": "Base URL is required",
+  "settings.error.modelRequired": "Summary model is required",
 
-  "footer.build": "M1 prototype · v0.1.0 · Tauri 2 + Next.js 16",
+  "footer.build": "v{version} · Tauri 2 + Next.js 16",
 };
 
 const zh: Dict = {
@@ -130,11 +163,17 @@ const zh: Dict = {
 
   "dialog.title": "选择一个 Git 项目来学习",
   "cta.pickProject": "📁 选择本地项目分析",
+  "cta.pickProject.sub": "选择一个本地目录，开始分析这个仓库",
+
+  "onboard.noKey": "还没配置 API key——先设置一下，否则分析会失败。",
+  "onboard.noKey.cta": "打开设置",
 
   "stage.picking": "等你选一个文件夹…",
   "stage.packing": "用 Repomix 打包仓库中…",
   "stage.summarizing": "请模型先读一遍代码…",
   "stage.tokens": "{files} 个文件 · {tokens} tokens",
+  "stage.elapsed": "已用时 {seconds} 秒",
+  "stage.slow": "比平时慢一些——大仓库或模型繁忙时需要更久…",
 
   "error.title": "出错了",
   "error.retry": "换一个项目试试",
@@ -160,9 +199,18 @@ const zh: Dict = {
   "chat.waitingIndex": "等代码索引建完，好引用真实源码再回答…",
   "chat.input.placeholder": "针对这个项目提问…",
   "chat.send": "发送",
+  "chat.stop": "停止",
+  "chat.copy": "复制",
+  "chat.copied": "已复制 ✓",
+  "chat.retry": "重试",
+  "chat.askNow": "直接提问",
   "chat.error": "⚠️ 出错了：{message}",
 
   "mermaid.failed": "Mermaid 渲染失败 — 查看源码",
+  "mermaid.zoomIn": "放大",
+  "mermaid.zoomOut": "缩小",
+  "mermaid.zoomReset": "重置缩放",
+  "mermaid.export": "导出 SVG",
 
   "panel.files": "文件",
   "panel.chat": "师父",
@@ -185,9 +233,18 @@ const zh: Dict = {
   "code.stats": "{lines} 行 · {bytes} B",
   "code.askAboutFile": "💬 针对此文件提问",
   "code.askPrompt": "[{path}] 这个文件是干什么的？讲一下。",
+  "code.actions": "操作",
+  "code.askSelection": "针对选中代码提问",
+  "code.copy": "复制",
+  "code.copied": "已复制 ✓",
+  "code.truncated": "大文件——为保证流畅只显示前 {shown} / {total} 行",
+  "code.showAll": "显示完整文件",
 
   "summary.toggle.show": "展开总结",
   "summary.toggle.hide": "收起总结",
+  "summary.export": "⬇ 导出 Markdown",
+  "summary.exported": "已导出 ✓",
+  "summary.moduleFiles": "{n} 个文件",
 
   "deep.button": "🔬 深度分析",
   "deep.title": "深度分析",
@@ -199,6 +256,8 @@ const zh: Dict = {
   "deep.perspective.security": "安全面",
   "deep.perspective.testing": "测试与质量",
   "deep.perspective.failed": "（未能生成）",
+  "deep.unavailable.restored":
+    "深度分析需要完整打包内容——重新分析本项目后可用。",
 
   "search.title": "搜索代码",
   "search.placeholder": "搜索符号 / 代码…",
@@ -227,8 +286,11 @@ const zh: Dict = {
   "settings.close": "关闭",
   "settings.hint.byok": "你的 key 仅存本地，绝不离开你的机器。",
   "settings.needed": "在「设置」里填入 API key 即可开始。",
+  "settings.error.keyRequired": "API key 不能为空",
+  "settings.error.baseUrlRequired": "Base URL 不能为空",
+  "settings.error.modelRequired": "总结模型不能为空",
 
-  "footer.build": "M1 原型 · v0.1.0 · Tauri 2 + Next.js 16",
+  "footer.build": "v{version} · Tauri 2 + Next.js 16",
 };
 
 export const dict: Record<Locale, Dict> = { en, zh };

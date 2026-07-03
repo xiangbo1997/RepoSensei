@@ -7,7 +7,8 @@ import type { CodeHit, SearchResult } from "@/lib/types";
 
 interface Props {
   projectRoot: string;
-  onSelectFile: (relativePath: string) => void;
+  /** 点击结果跳转到 CodeViewer；line 为命中片段起始行，供滚动定位。 */
+  onSelectFile: (relativePath: string, line?: number) => void;
 }
 
 /**
@@ -84,7 +85,7 @@ export function CodeSearch({ projectRoot, onSelectFile }: Props) {
               <button
                 key={`${hit.path}:${hit.startLine}`}
                 type="button"
-                onClick={() => onSelectFile(hit.path)}
+                onClick={() => onSelectFile(hit.path, hit.startLine)}
                 className="text-left px-2 py-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-white/5 transition-colors group"
               >
                 <div className="font-mono text-[10px] text-amber-700 dark:text-amber-400 truncate">

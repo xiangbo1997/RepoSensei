@@ -10,12 +10,23 @@ interface Props {
   selectedFile: string | null;
   onAskAboutFile: (relativePath: string) => void;
   onAskAboutCode?: (code: string, relativePath: string) => void;
+  /** 需要滚动定位并高亮的目标行（1-based）。来自搜索命中跳转。 */
+  targetLine?: number | null;
 }
+
+/** 超过该字节数的文件默认只高亮开头，避免同步高亮阻塞主线程（1MB 文件可卡数秒）。 */
+const HIGHLIGHT_BYTE_LIMIT = 200 * 1024;
 
 type Stage =
   | { kind: "empty" }
   | { kind: "loading"; path: string }
-  | { kind: "ready"; file: FileContent; html: string }
+  | {
+      kind: "ready";
+      file: FileContent;
+      html: string;
+      /** 被截断时的已高亮行数；未截断为 null。 */
+      truncatedAtLine: number | null;
+    }
   | { kind: "error"; path: string; error: string };
 
 interface ContextMenuState {
@@ -80,16 +91,54 @@ async function getHighlighter() {
   return highlighterPromise;
 }
 
+/** 当前系统主题对应的 shiki theme。 */
+function currentTheme(): string {
+  return typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    ? "github-dark"
+    : "github-light";
+}
+
+/**
+ * 高亮文件内容。大文件默认只高亮前 HIGHLIGHT_BYTE_LIMIT 字节，
+ * 返回 truncatedAtLine（已高亮的行数）以便 UI 提示；full=true 时强制全量。
+ */
+async function highlightFile(
+  file: FileContent,
+  full: boolean,
+): Promise<{ html: string; truncatedAtLine: number | null }> {
+  const hl = await getHighlighter();
+  const lang = languageForPath(file.path);
+  const theme = currentTheme();
+  const overLimit =
+    !full && typeof file.size === "number" && file.size > HIGHLIGHT_BYTE_LIMIT;
+  if (!overLimit) {
+    const html = await hl.codeToHtml(file.content, { lang, theme });
+    return { html, truncatedAtLine: null };
+  }
+  // 按字节截断到上限内的最后一个完整行，避免高亮半行。
+  const slice = file.content.slice(0, HIGHLIGHT_BYTE_LIMIT);
+  const lastNewline = slice.lastIndexOf("\n");
+  const partial = lastNewline > 0 ? slice.slice(0, lastNewline) : slice;
+  const shownLines = partial.split("\n").length;
+  const html = await hl.codeToHtml(partial, { lang, theme });
+  return { html, truncatedAtLine: shownLines };
+}
+
 export function CodeViewer({
   projectRoot,
   selectedFile,
   onAskAboutFile,
   onAskAboutCode,
+  targetLine,
 }: Props) {
   const { t } = useT();
   const [stage, setStage] = useState<Stage>({ kind: "empty" });
   const [menu, setMenu] = useState<ContextMenuState | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [expanding, setExpanding] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const codeHostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -106,15 +155,10 @@ export function CodeViewer({
           root: projectRoot,
           relative: selectedFile,
         });
-        const theme =
-          typeof window !== "undefined" &&
-          window.matchMedia?.("(prefers-color-scheme: dark)").matches
-            ? "github-dark"
-            : "github-light";
-        const hl = await getHighlighter();
-        const lang = languageForPath(file.path);
-        const html = await hl.codeToHtml(file.content, { lang, theme });
-        if (!cancelled) setStage({ kind: "ready", file, html });
+        const { html, truncatedAtLine } = await highlightFile(file, false);
+        if (!cancelled) {
+          setStage({ kind: "ready", file, html, truncatedAtLine });
+        }
       } catch (e) {
         if (!cancelled) {
           setStage({
@@ -129,6 +173,42 @@ export function CodeViewer({
       cancelled = true;
     };
   }, [projectRoot, selectedFile]);
+
+  // 「显示全部」：应用户请求对大文件做全量高亮。
+  const showAll = useCallback(async () => {
+    if (stage.kind !== "ready" || stage.truncatedAtLine === null) return;
+    setExpanding(true);
+    try {
+      const { html } = await highlightFile(stage.file, true);
+      setStage({
+        kind: "ready",
+        file: stage.file,
+        html,
+        truncatedAtLine: null,
+      });
+    } finally {
+      setExpanding(false);
+    }
+  }, [stage]);
+
+  // 目标行滚动定位 + 闪烁高亮。文件已加载或 targetLine 变化时都会触发。
+  useEffect(() => {
+    if (stage.kind !== "ready" || !targetLine) return;
+    const host = codeHostRef.current;
+    if (!host) return;
+    const lines = host.querySelectorAll<HTMLElement>("code > .line");
+    const el = lines[targetLine - 1];
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.setAttribute("data-flash", "true");
+    const timer = setTimeout(() => {
+      el.removeAttribute("data-flash");
+    }, 2000);
+    return () => {
+      clearTimeout(timer);
+      el.removeAttribute("data-flash");
+    };
+  }, [stage, targetLine]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -165,6 +245,8 @@ export function CodeViewer({
   const handleCopy = useCallback(() => {
     if (menu?.selectedText) {
       navigator.clipboard.writeText(menu.selectedText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     }
     closeMenu();
   }, [menu, closeMenu]);
@@ -176,6 +258,20 @@ export function CodeViewer({
       className="flex flex-col h-full bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none overflow-hidden relative"
       onContextMenu={handleContextMenu}
     >
+      {/* 目标行闪烁高亮：搜索跳转后定位的那一行短暂高亮再淡出。 */}
+      <style>{`
+        .shiki-host .line[data-flash] {
+          display: inline-block;
+          width: 100%;
+          background-color: rgba(245, 158, 11, 0.28);
+          border-radius: 3px;
+          animation: cv-flash 2s ease-out forwards;
+        }
+        @keyframes cv-flash {
+          0% { background-color: rgba(245, 158, 11, 0.45); }
+          100% { background-color: rgba(245, 158, 11, 0); }
+        }
+      `}</style>
       <div className="px-6 py-3 border-b border-slate-100 dark:border-white/5 flex items-center justify-between gap-4 min-h-[56px]">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-white/5 flex items-center justify-center text-sm shrink-0">
@@ -245,13 +341,40 @@ export function CodeViewer({
           </div>
         )}
         {stage.kind === "ready" && (
-          <div
-            className="shiki-host font-mono text-[13px] leading-relaxed p-6"
-            // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki output is sanitized HTML
-            dangerouslySetInnerHTML={{ __html: stage.html }}
-          />
+          <>
+            {stage.truncatedAtLine !== null && (
+              <div className="flex items-center justify-between gap-3 px-6 py-2.5 text-[11px] bg-amber-50 dark:bg-amber-950/20 border-b border-amber-200/60 dark:border-amber-900/30 text-amber-800 dark:text-amber-300">
+                <span>
+                  {t("code.truncated", {
+                    shown: stage.truncatedAtLine,
+                    total: stage.file.content.split("\n").length,
+                  })}
+                </span>
+                <button
+                  type="button"
+                  onClick={showAll}
+                  disabled={expanding}
+                  className="shrink-0 px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold transition-colors disabled:opacity-50"
+                >
+                  {t("code.showAll")}
+                </button>
+              </div>
+            )}
+            <div
+              ref={codeHostRef}
+              className="shiki-host font-mono text-[13px] leading-relaxed p-6"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: shiki output is sanitized HTML
+              dangerouslySetInnerHTML={{ __html: stage.html }}
+            />
+          </>
         )}
       </div>
+
+      {copied && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-slate-900/90 dark:bg-white/90 text-white dark:text-slate-900 text-xs font-bold shadow-2xl animate-in fade-in zoom-in duration-150">
+          {t("code.copied")}
+        </div>
+      )}
 
       {menu && stage.kind === "ready" && (
         // biome-ignore lint/a11y/noStaticElementInteractions: onClick 仅用于阻止冒泡，非交互入口；内部按钮可键盘操作
@@ -262,7 +385,7 @@ export function CodeViewer({
           onClick={(e) => e.stopPropagation()}
         >
           <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest border-b border-slate-100 dark:border-white/5 mb-1">
-            Actions
+            {t("code.actions")}
           </div>
 
           {menu.selectedText && onAskAboutCode && (
@@ -277,7 +400,7 @@ export function CodeViewer({
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-amber-600 hover:text-white rounded-xl transition-colors text-left group"
             >
               <span className="text-base">✨</span>
-              <span className="flex-1">Ask AI about selection</span>
+              <span className="flex-1">{t("code.askSelection")}</span>
               <span className="text-[10px] opacity-40 group-hover:opacity-100 font-mono">
                 ⌘I
               </span>
@@ -293,7 +416,7 @@ export function CodeViewer({
             className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition-colors text-left"
           >
             <span className="text-base">📄</span>
-            <span className="flex-1">Ask AI about this file</span>
+            <span className="flex-1">{t("code.askAboutFile")}</span>
           </button>
 
           <div className="h-px bg-slate-100 dark:bg-white/5 my-1" />
@@ -305,7 +428,7 @@ export function CodeViewer({
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 rounded-xl transition-colors text-left group"
             >
               <span className="text-base">📋</span>
-              <span className="flex-1">Copy</span>
+              <span className="flex-1">{t("code.copy")}</span>
               <span className="text-[10px] opacity-40 group-hover:opacity-100 font-mono">
                 ⌘C
               </span>

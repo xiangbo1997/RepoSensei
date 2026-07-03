@@ -3,7 +3,7 @@ process.env.RS_DISABLE_EMBEDDINGS = "1";
 
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,5 +106,75 @@ describe("sidecar 协议契约", () => {
     const r = await callSidecar("bogus_cmd", {});
     expect(r.ok).toBe(false);
     expect(typeof r.error).toBe("string");
+  });
+});
+
+describe("read_file 安全边界", () => {
+  let root;
+  let outside;
+
+  beforeAll(async () => {
+    // root 与 sibling 共享路径前缀，用于验证 raw startsWith 的兄弟目录绕过被挡住。
+    const uniq = randomUUID();
+    root = await mkdtemp(path.join(tmpdir(), `reposensei-sec-${uniq}-`));
+    await writeFile(path.join(root, "ok.ts"), "export const ok = 1;\n");
+    // 密钥文件：应被 read_file 拒读。
+    await writeFile(path.join(root, ".env"), "SECRET_KEY=super-secret\n");
+
+    // 项目外的敏感目标 + 兄弟目录（前缀 = root + "-evil"）。
+    outside = path.join(path.dirname(root), `${path.basename(root)}-evil`);
+    await mkdir(outside, { recursive: true });
+    await writeFile(path.join(outside, "secret.txt"), "TOP SECRET\n");
+
+    // 树内符号链接指向项目外文件。
+    try {
+      await symlink(path.join(outside, "secret.txt"), path.join(root, "link.ts"));
+    } catch {
+      // 某些环境无权建 symlink → 该用例会被下方 skip 判断跳过。
+    }
+  });
+
+  afterAll(async () => {
+    await rm(root, { recursive: true, force: true }).catch(() => {});
+    await rm(outside, { recursive: true, force: true }).catch(() => {});
+  });
+
+  test("正常读取根内文件成功", async () => {
+    const r = await callSidecar("read_file", { root, relative: "ok.ts" });
+    expect(r.ok).toBe(true);
+    expect(r.data.content).toContain("export const ok");
+  });
+
+  test("拒绝 .. 逃逸", async () => {
+    const r = await callSidecar("read_file", { root, relative: "../secret.txt" });
+    expect(r.ok).toBe(false);
+    expect(typeof r.error).toBe("string");
+  });
+
+  test("拒绝兄弟目录前缀绕过（/xxx vs /xxx-evil）", async () => {
+    // relative 归一化后是 "../<root>-evil/secret.txt"，join 后落到兄弟目录。
+    const evilRel = path.join("..", `${path.basename(root)}-evil`, "secret.txt");
+    const r = await callSidecar("read_file", { root, relative: evilRel });
+    expect(r.ok).toBe(false);
+  });
+
+  test("拒绝绝对路径", async () => {
+    const r = await callSidecar("read_file", {
+      root,
+      relative: path.join(outside, "secret.txt"),
+    });
+    expect(r.ok).toBe(false);
+  });
+
+  test("拒绝密钥文件（.env）", async () => {
+    const r = await callSidecar("read_file", { root, relative: ".env" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/secret/i);
+  });
+
+  test("拒绝指向项目外的符号链接", async () => {
+    const r = await callSidecar("read_file", { root, relative: "link.ts" });
+    // symlink 建成功 → 应被拒；建失败（无权限）→ 目标不存在同样报错。
+    expect(r.ok).toBe(false);
   });
 });

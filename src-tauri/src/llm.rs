@@ -6,11 +6,103 @@
 //! Cloudflare-fronted proxies WAF-block.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager, Window};
+
+/// 进行中的 chat 流式请求的取消标志。前端强制一次只有一个 chat 在飞，
+/// 故单个全局标志足够：chat_ask 开始时置 false，两个 SSE 循环每个 chunk 检查它，
+/// chat_cancel 命令置 true 让循环提前结束（返回 Ok，不作错误处理）。
+static CHAT_CANCELLED: AtomicBool = AtomicBool::new(false);
+
+/// 前端调用以取消进行中的 chat 流式回答。仅置标志，由 SSE 循环在下一个 chunk 边界感知。
+pub fn cancel_chat() {
+  CHAT_CANCELLED.store(true, Ordering::SeqCst);
+}
+
+/// 批量 emit 的最小间隔：累积到该时长才把缓冲的 delta 一次性 emit 给前端，
+/// 把每 token 一次 IPC 跨界压成每 ~50ms 一次，显著降低窗口通信开销。
+const EMIT_FLUSH_INTERVAL: Duration = Duration::from_millis(50);
+
+/// SSE 行缓冲：按原始字节累积，仅在遇到换行时切出完整行并 UTF-8 解码。
+///
+/// 动机：过去对每个 chunk 直接 `String::from_utf8_lossy` 会把跨 chunk 边界切断的
+/// 多字节 UTF-8 字符解成替换符（正确性 bug）；且 `find('\n')` + `drain(..=nl)` 每次
+/// 从头搬移是 O(n²)。这里换行字节（0x0A）永不出现在多字节 UTF-8 序列内部，故按字节
+/// 扫换行、只对完整行整体解码是安全的；用游标标记已消费位置，每个 chunk 末尾一次性
+/// 压缩缓冲区，避免反复 drain 头部。
+struct SseLineBuffer {
+  /// 尚未切出成完整行的原始字节（可能含一个跨 chunk 的半行）。
+  buf: Vec<u8>,
+}
+
+impl SseLineBuffer {
+  fn new() -> Self {
+    Self { buf: Vec::new() }
+  }
+
+  /// 追加一段原始字节，返回本次新切出的所有完整行（已去除行尾换行、UTF-8 解码）。
+  /// 跨 chunk 的半行留在内部缓冲，等后续字节补齐。
+  fn push(&mut self, bytes: &[u8]) -> Vec<String> {
+    self.buf.extend_from_slice(bytes);
+    let mut lines = Vec::new();
+    let mut cursor = 0usize;
+    while let Some(offset) = self.buf[cursor..].iter().position(|&b| b == b'\n') {
+      let end = cursor + offset;
+      // 换行不落在多字节序列内部，故此处按行整体解码安全；lossy 仅作兜底。
+      lines.push(String::from_utf8_lossy(&self.buf[cursor..end]).into_owned());
+      cursor = end + 1;
+    }
+    // 每个 chunk 只压缩一次：把已消费前缀丢掉，剩余半行移到缓冲头部。
+    if cursor > 0 {
+      self.buf.drain(..cursor);
+    }
+    lines
+  }
+}
+
+/// delta 批量 emit 器：把流式 token 攒进 pending，仅当距上次 emit 超过
+/// EMIT_FLUSH_INTERVAL 才一次性 emit 给前端，末尾再 flush 一次收尾。
+/// 前端不变——仍监听 "chat:delta" 累加，只是每次收到的是一小段而非单 token。
+struct DeltaEmitter<'a> {
+  window: Option<&'a Window>,
+  pending: String,
+  last_emit: Instant,
+}
+
+impl<'a> DeltaEmitter<'a> {
+  fn new(window: Option<&'a Window>) -> Self {
+    Self {
+      window,
+      pending: String::new(),
+      last_emit: Instant::now(),
+    }
+  }
+
+  /// 攒入一段 delta，若距上次 emit 已超过间隔则立即 flush。
+  fn push(&mut self, delta: &str) {
+    self.pending.push_str(delta);
+    if self.last_emit.elapsed() >= EMIT_FLUSH_INTERVAL {
+      self.flush();
+    }
+  }
+
+  /// 把 pending 一次性 emit 给前端并清空、重置计时。pending 为空则空操作。
+  fn flush(&mut self) {
+    if self.pending.is_empty() {
+      return;
+    }
+    if let Some(w) = self.window {
+      let _ = w.emit("chat:delta", &self.pending);
+    }
+    self.pending.clear();
+    self.last_emit = Instant::now();
+  }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModuleSummary {
@@ -839,6 +931,8 @@ pub async fn chat_stream(
   locale: &str,
   project_root: Option<&str>,
 ) -> Result<(), String> {
+  // 新一轮问答开始，清掉上一轮可能残留的取消标志。
+  CHAT_CANCELLED.store(false, Ordering::SeqCst);
   let cfg = resolve_config()?;
   let directive = locale_directive_chat(locale);
   let modules = summary
@@ -1059,17 +1153,21 @@ async fn openai_chat(
   }
 
   let mut stream_resp = resp.bytes_stream();
-  let mut buf = String::new();
+  let mut line_buf = SseLineBuffer::new();
+  let mut emitter = DeltaEmitter::new(window.as_ref());
   while let Some(chunk) = stream_resp.next().await {
+    // 用户取消：立即收尾（flush 已攒的 delta），返回已累积文本，不作错误处理。
+    if CHAT_CANCELLED.load(Ordering::SeqCst) {
+      emitter.flush();
+      return Ok(accumulated);
+    }
     let bytes = chunk.map_err(|e| format!("stream chunk failed: {e}"))?;
-    buf.push_str(&String::from_utf8_lossy(&bytes));
-    while let Some(nl) = buf.find('\n') {
-      let line = buf[..nl].trim().to_string();
-      buf.drain(..=nl);
-      let Some(payload) = line.strip_prefix("data: ") else {
+    for line in line_buf.push(&bytes) {
+      let Some(payload) = line.trim().strip_prefix("data: ") else {
         continue;
       };
       if payload == "[DONE]" {
+        emitter.flush();
         return Ok(accumulated);
       }
       if let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) {
@@ -1081,13 +1179,13 @@ async fn openai_chat(
           .and_then(|s| s.as_str())
         {
           accumulated.push_str(delta);
-          if let Some(w) = window.as_ref() {
-            let _ = w.emit("chat:delta", delta);
-          }
+          emitter.push(delta);
         }
       }
     }
   }
+  // 循环正常结束：把最后攒的 delta 补 emit。
+  emitter.flush();
   Ok(accumulated)
 }
 
@@ -1187,14 +1285,17 @@ async fn anthropic_chat(
 
   let mut accumulated = String::new();
   let mut stream_resp = resp.bytes_stream();
-  let mut buf = String::new();
+  let mut line_buf = SseLineBuffer::new();
+  let mut emitter = DeltaEmitter::new(window.as_ref());
   while let Some(chunk) = stream_resp.next().await {
+    // 用户取消：立即收尾（flush 已攒的 delta），返回已累积文本，不作错误处理。
+    if CHAT_CANCELLED.load(Ordering::SeqCst) {
+      emitter.flush();
+      return Ok(accumulated);
+    }
     let bytes = chunk.map_err(|e| format!("stream chunk failed: {e}"))?;
-    buf.push_str(&String::from_utf8_lossy(&bytes));
-    while let Some(nl) = buf.find('\n') {
-      let line = buf[..nl].trim().to_string();
-      buf.drain(..=nl);
-      let Some(payload) = line.strip_prefix("data: ") else {
+    for line in line_buf.push(&bytes) {
+      let Some(payload) = line.trim().strip_prefix("data: ") else {
         continue;
       };
       if let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) {
@@ -1204,13 +1305,13 @@ async fn anthropic_chat(
           .and_then(|s| s.as_str())
         {
           accumulated.push_str(delta);
-          if let Some(w) = window.as_ref() {
-            let _ = w.emit("chat:delta", delta);
-          }
+          emitter.push(delta);
         }
       }
     }
   }
+  // 循环正常结束：把最后攒的 delta 补 emit。
+  emitter.flush();
   Ok(accumulated)
 }
 
@@ -1424,5 +1525,62 @@ mod tests {
     assert!(block.contains("src/foo.rs:10-22"));
     assert!(block.contains("fn foo() {}"));
     assert!(!block.contains("still building"));
+  }
+
+  // ── SseLineBuffer ────────────────────────────────────────────────────
+
+  #[test]
+  fn sse_buffer_partial_line_across_chunks() {
+    // 一行被拆到两个 chunk：前半不产出行，补齐后才切出完整行。
+    let mut b = SseLineBuffer::new();
+    assert!(b.push(b"data: hel").is_empty());
+    let lines = b.push(b"lo\n");
+    assert_eq!(lines, vec!["data: hello".to_string()]);
+  }
+
+  #[test]
+  fn sse_buffer_multibyte_utf8_split_across_chunks() {
+    // 多字节 UTF-8 字符（「你」= E4 BD A0）被 chunk 边界切断：
+    // 按行整体解码后必须还原为原字符，而非替换符。
+    let ni = "你".as_bytes(); // 3 字节
+    let mut b = SseLineBuffer::new();
+    assert!(b.push(&ni[..1]).is_empty()); // 第 1 字节
+    assert!(b.push(&ni[1..2]).is_empty()); // 第 2 字节
+    let lines = b.push(&[&ni[2..], b"\n"].concat()); // 第 3 字节 + 换行
+    assert_eq!(lines, vec!["你".to_string()]);
+    assert!(!lines[0].contains('\u{FFFD}'));
+  }
+
+  #[test]
+  fn sse_buffer_multiple_lines_in_one_chunk() {
+    // 一个 chunk 含多行：一次全部切出，尾部无换行的半行留在缓冲。
+    let mut b = SseLineBuffer::new();
+    let lines = b.push(b"line1\nline2\nline3");
+    assert_eq!(lines, vec!["line1".to_string(), "line2".to_string()]);
+    // "line3" 尚未遇到换行，留在缓冲，下次补换行才产出。
+    assert_eq!(b.push(b"\n"), vec!["line3".to_string()]);
+  }
+
+  #[test]
+  fn sse_buffer_done_passthrough() {
+    // [DONE] 哨兵作为普通一行原样切出，由调用方识别。
+    let mut b = SseLineBuffer::new();
+    let lines = b.push(b"data: [DONE]\n");
+    assert_eq!(lines, vec!["data: [DONE]".to_string()]);
+  }
+
+  #[test]
+  fn sse_buffer_crlf_and_blank_lines() {
+    // SSE 事件间常有 \r\n 空行；按 \n 切行后 \r 留在行尾，由调用方 trim。
+    let mut b = SseLineBuffer::new();
+    let lines = b.push(b"data: a\r\n\r\ndata: b\n");
+    assert_eq!(
+      lines,
+      vec![
+        "data: a\r".to_string(),
+        "\r".to_string(),
+        "data: b".to_string()
+      ]
+    );
   }
 }

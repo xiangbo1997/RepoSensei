@@ -11,19 +11,17 @@ import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { ResizablePanels } from "@/components/ResizablePanels";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { SummaryView } from "@/components/SummaryView";
+import { errMsg } from "@/lib/errMsg";
 import type { FileEntry, FileListing } from "@/lib/file-tree";
 import { languageForPath } from "@/lib/file-tree";
 import { useT } from "@/lib/i18n";
 import type { PackedProject, ProjectSummary, RecentProject } from "@/lib/types";
+import pkg from "../../package.json" with { type: "json" };
 
-type Stage =
-  | "idle"
-  | "picking"
-  | "packing"
-  | "listing"
-  | "summarizing"
-  | "ready"
-  | "error";
+type Stage = "idle" | "picking" | "listing" | "summarizing" | "ready" | "error";
+
+/** 超过该秒数仍在工作时，给用户一句「比平时慢」的安抚提示。 */
+const SLOW_HINT_AFTER_S = 30;
 
 export default function Home() {
   const { t, locale } = useT();
@@ -42,6 +40,11 @@ export default function Home() {
   const [indexStatus, setIndexStatus] = useState<"idle" | "building" | "ready">(
     "idle",
   );
+  // 搜索命中 / 回答引用跳转的目标行；文件树普通点击时清空。
+  const [targetLine, setTargetLine] = useState<number | null>(null);
+  // null = 尚未查询；false = 未配置 key（.env.local 的 key 检测不到，故只提示不拦截）。
+  const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [elapsedS, setElapsedS] = useState(0);
   const chatRef = useRef<ChatPanelHandle | null>(null);
 
   const refreshRecents = useCallback(async () => {
@@ -52,9 +55,19 @@ export default function Home() {
     }
   }, []);
 
+  const refreshHasKey = useCallback(async () => {
+    try {
+      const s = await invoke<{ hasKey: boolean }>("get_settings");
+      setHasKey(s.hasKey);
+    } catch {
+      setHasKey(null);
+    }
+  }, []);
+
   useEffect(() => {
     void refreshRecents();
-  }, [refreshRecents]);
+    void refreshHasKey();
+  }, [refreshRecents, refreshHasKey]);
 
   const reset = useCallback(() => {
     setStage("idle");
@@ -66,6 +79,7 @@ export default function Home() {
     setSummaryOpen(false);
     setError(null);
     setIndexStatus("idle");
+    setTargetLine(null);
   }, []);
 
   const handlePick = useCallback(async () => {
@@ -126,7 +140,7 @@ export default function Home() {
           setIndexStatus("idle");
         });
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errMsg(e));
       setStage("error");
     }
   }, [locale, t, refreshRecents]);
@@ -170,7 +184,7 @@ export default function Home() {
           .then(refreshRecents)
           .catch(() => {});
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errMsg(e));
         setStage("error");
       }
     },
@@ -196,11 +210,30 @@ export default function Home() {
     [],
   );
 
+  // 搜索命中 / 回答里的 file:line 引用 → 打开文件并定位到行。
+  const handleOpenFile = useCallback((path: string, line?: number) => {
+    setSelectedFile(path);
+    setTargetLine(line ?? null);
+  }, []);
+
+  // 文件树普通点击：只换文件，不带目标行。
+  const handleTreeSelect = useCallback((path: string) => {
+    setSelectedFile(path);
+    setTargetLine(null);
+  }, []);
+
   const isWorking =
-    stage === "picking" ||
-    stage === "packing" ||
-    stage === "listing" ||
-    stage === "summarizing";
+    stage === "picking" || stage === "listing" || stage === "summarizing";
+
+  // 工作中计秒：给长等待一个「还活着」的信号；超过阈值再补一句安抚提示。
+  useEffect(() => {
+    if (!isWorking) {
+      setElapsedS(0);
+      return;
+    }
+    const timer = window.setInterval(() => setElapsedS((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [isWorking]);
 
   return (
     <main className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-amber-200 dark:selection:bg-amber-900">
@@ -300,11 +333,35 @@ export default function Home() {
         </div>
       </header>
 
-      {settingsOpen && <SettingsPanel onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <SettingsPanel
+          onClose={() => setSettingsOpen(false)}
+          onSaved={() => void refreshHasKey()}
+        />
+      )}
 
       <div className="flex-1 min-h-0 overflow-hidden relative z-10">
         {stage === "idle" && (
           <div className="h-full flex flex-col items-center justify-center gap-5 p-8 animate-in">
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md text-center">
+              {t("app.tagline.hero")}
+            </p>
+            {/* 无 key 引导：只提示不拦截——.env.local 里的 key 检测不到，禁用会误伤开发者。 */}
+            {hasKey === false && (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 max-w-md">
+                <span className="text-lg shrink-0">🔑</span>
+                <span className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
+                  {t("onboard.noKey")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSettingsOpen(true)}
+                  className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
+                >
+                  {t("onboard.noKey.cta")}
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={handlePick}
@@ -318,7 +375,7 @@ export default function Home() {
                   {t("cta.pickProject")}
                 </div>
                 <div className="text-sm text-slate-500 dark:text-slate-500 max-w-[240px]">
-                  Select a local directory to begin your repository analysis
+                  {t("cta.pickProject.sub")}
                 </div>
               </div>
               <div className="absolute inset-0 rounded-[2.5rem] ring-1 ring-inset ring-slate-900/5 dark:ring-white/5 pointer-events-none" />
@@ -389,7 +446,6 @@ export default function Home() {
             <div className="text-center space-y-2">
               <div className="text-lg font-medium text-slate-700 dark:text-slate-300">
                 {stage === "picking" && t("stage.picking")}
-                {stage === "packing" && t("stage.packing")}
                 {stage === "listing" && t("stage.packing")}
                 {stage === "summarizing" && t("stage.summarizing")}
               </div>
@@ -399,6 +455,17 @@ export default function Home() {
                     files: packed.filesScanned,
                     tokens: packed.totalTokens.toLocaleString(),
                   })}
+                </div>
+              )}
+              {/* 计秒 + 慢提示：让 1-2 分钟的总结等待「可感知在推进」，而非死等。 */}
+              {elapsedS > 2 && (
+                <div className="text-xs font-mono text-slate-400 dark:text-slate-500">
+                  {t("stage.elapsed", { seconds: elapsedS })}
+                </div>
+              )}
+              {elapsedS > SLOW_HINT_AFTER_S && (
+                <div className="text-xs text-slate-400 dark:text-slate-500 max-w-[320px]">
+                  {t("stage.slow")}
                 </div>
               )}
             </div>
@@ -436,14 +503,14 @@ export default function Home() {
                   <div className="shrink-0 p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-2xl shadow-sm">
                     <CodeSearch
                       projectRoot={projectRoot}
-                      onSelectFile={setSelectedFile}
+                      onSelectFile={handleOpenFile}
                     />
                   </div>
                   <div className="flex-1 min-h-0">
                     <FileTree
                       files={files}
                       selected={selectedFile}
-                      onSelect={setSelectedFile}
+                      onSelect={handleTreeSelect}
                     />
                   </div>
                 </div>
@@ -452,15 +519,25 @@ export default function Home() {
                 <div className="h-full min-h-0 flex flex-col gap-4">
                   {summaryOpen && (
                     <div className="max-h-[45%] overflow-auto p-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border border-slate-200 dark:border-white/5 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none space-y-5">
-                      <SummaryView summary={summary} />
+                      <SummaryView
+                        summary={summary}
+                        projectName={
+                          packed?.name ??
+                          projectRoot.split(/[\\/]/).filter(Boolean).pop()
+                        }
+                      />
                       {/* 深度分析需要完整打包内容（packed）。从历史恢复时不重新打包，
-                          故 packed 为 null——此时隐藏深度分析，主界面其余部分照常可用。 */}
-                      {packed && (
+                          故 packed 为 null——此时给出解释而非静默消失。 */}
+                      {packed ? (
                         <div className="pt-4 border-t border-slate-100 dark:border-white/5">
                           <DeepAnalysisPanel
                             packed={packed}
                             summary={summary}
                           />
+                        </div>
+                      ) : (
+                        <div className="pt-4 border-t border-slate-100 dark:border-white/5 text-xs text-slate-400 dark:text-slate-500">
+                          🔬 {t("deep.unavailable.restored")}
                         </div>
                       )}
                     </div>
@@ -469,6 +546,7 @@ export default function Home() {
                     <CodeViewer
                       projectRoot={projectRoot}
                       selectedFile={selectedFile}
+                      targetLine={targetLine}
                       onAskAboutFile={handleAskAboutFile}
                       onAskAboutCode={handleAskAboutCode}
                     />
@@ -481,6 +559,7 @@ export default function Home() {
                   summary={summary}
                   projectRoot={projectRoot}
                   indexStatus={indexStatus}
+                  onOpenFile={handleOpenFile}
                 />
               }
             />
@@ -489,7 +568,7 @@ export default function Home() {
       </div>
 
       <footer className="px-6 py-2 text-[10px] font-mono uppercase tracking-[0.2em] text-slate-400 dark:text-slate-600 text-center border-t border-slate-200 dark:border-white/5 shrink-0 relative z-10">
-        {t("footer.build")}
+        {t("footer.build", { version: pkg.version })}
       </footer>
     </main>
   );

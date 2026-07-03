@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
@@ -59,5 +59,16 @@ describe("Hybrid 检索（mock embedding）", () => {
     await indexProject(dir);
     const r = await searchCode(dir, "database connect user", 5);
     expect(r.hits.some((h) => h.path === "src/db.ts")).toBe(true);
+  });
+
+  test("touch 未改内容 → 不重新 embed（embedded=0）", async () => {
+    await indexProject(dir); // 稳定态
+    // 只改 mtime，内容不变。
+    const future = new Date(Date.now() + 60_000);
+    await utimes(path.join(dir, "src", "auth.ts"), future, future);
+    const r = await indexProject(dir);
+    // 内容 hash 相同 → 复用旧 chunks/向量，不触发任何 embedding 调用。
+    expect(r.reindexed).toBe(0);
+    expect(r.embedded).toBe(0);
   });
 });

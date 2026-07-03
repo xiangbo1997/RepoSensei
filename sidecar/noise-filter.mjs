@@ -105,6 +105,50 @@ const EXTRA_GLOBS = [
 ];
 
 /**
+ * 密钥/凭据文件规则（按文件名判定）。命中的文件绝不进入任何读路径：
+ * repomix 打包、list_files 文件树、代码索引。防止 .env / 私钥 / 服务账号
+ * 凭据被打包送给 LLM 或写入检索库泄露。
+ * 这是密钥文件过滤的单一真相源，三条读路径共用。
+ */
+const SECRET_PATTERNS = [
+  /^\.env$/,                        // .env
+  /^\.env\..+/,                     // .env.local / .env.production 等
+  /\.pem$/,                         // PEM 证书 / 私钥
+  /\.key$/,                         // 私钥
+  /^id_rsa($|\..+)/,                // SSH RSA 私钥（id_rsa / id_rsa.pub）
+  /^id_ed25519($|\..+)/,            // SSH Ed25519 私钥
+  /\.p12$/,                         // PKCS#12 密钥库
+  /\.pfx$/,                         // PFX 密钥库
+  /^credentials\.json$/,            // 云 SDK 凭据
+  /^service-account.*\.json$/,      // GCP 服务账号密钥
+  /^\.npmrc$/,                      // npm 令牌
+  /^\.netrc$/,                      // 机器登录凭据
+  /^secrets\.(json|ya?ml|toml)$/,   // 通用 secrets 配置
+];
+
+/**
+ * 是否为密钥/凭据文件（按 basename 判定，忽略目录）。
+ * @param {string} filePath 相对或绝对路径
+ * @returns {boolean}
+ */
+export function isSecretFile(filePath) {
+  const base = filePath.split(/[/\\]/).pop() ?? filePath;
+  return SECRET_PATTERNS.some((p) => p.test(base));
+}
+
+/** repomix `--ignore` 用的密钥文件 glob（跨目录匹配 basename）。 */
+const SECRET_GLOBS = [
+  "**/.env", "**/.env.*",
+  "**/*.pem", "**/*.key",
+  "**/id_rsa", "**/id_rsa.*",
+  "**/id_ed25519", "**/id_ed25519.*",
+  "**/*.p12", "**/*.pfx",
+  "**/credentials.json", "**/service-account*.json",
+  "**/.npmrc", "**/.netrc",
+  "**/secrets.json", "**/secrets.yaml", "**/secrets.yml", "**/secrets.toml",
+];
+
+/**
  * 是否为工具生成的文件（纯路径判定）。
  * @param {string} filePath 相对或绝对路径
  * @returns {boolean}
@@ -142,5 +186,5 @@ export function repomixIgnoreGlobs() {
     "**/*.g.dart", "**/*.freezed.dart", "**/*.pb.dart",
     "**/*.pbgrpc.dart", "**/*.chopper.dart",
   ];
-  return [...dirGlobs, ...generatedGlobs, ...EXTRA_GLOBS];
+  return [...dirGlobs, ...generatedGlobs, ...EXTRA_GLOBS, ...SECRET_GLOBS];
 }

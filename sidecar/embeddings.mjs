@@ -120,10 +120,13 @@ export function vectorToBlob(vec) {
   return Buffer.from(f32.buffer, f32.byteOffset, f32.byteLength);
 }
 
-/** Buffer（Float32 BLOB）→ number[]。 */
+/**
+ * Buffer（Float32 BLOB）→ Float32Array 视图。
+ * 直接返回 typed array 视图，省掉 Array.from 的装箱（余弦打分是热路径，
+ * 每次检索对候选集逐块调用）。cosineSimilarity 按下标遍历，兼容 typed array。
+ */
 export function blobToVector(blob) {
   if (!blob) return null;
   const buf = Buffer.isBuffer(blob) ? blob : Buffer.from(blob);
-  const f32 = new Float32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
-  return Array.from(f32);
+  return new Float32Array(buf.buffer, buf.byteOffset, Math.floor(buf.byteLength / 4));
 }

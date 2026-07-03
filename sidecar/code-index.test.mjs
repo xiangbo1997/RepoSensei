@@ -1,7 +1,7 @@
 // 离线确定性：强制纯 FTS5，不触发真实 embedding 网络请求（须在 import 前设置）。
 process.env.RS_DISABLE_EMBEDDINGS = "1";
 
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -142,6 +142,29 @@ describe("增量索引", () => {
 
     const { hits } = await searchCode(incDir, "gamma", 5);
     expect(hits.some((h) => h.content.includes("gamma"))).toBe(true);
+  });
+
+  test("mtime+size 未变则复用（快速短路，不重建）", async () => {
+    // 先建到稳定态：所有文件复用。
+    await indexProject(incDir);
+    const baseline = await indexProject(incDir);
+    expect(baseline.reindexed).toBe(0);
+    const reusedCount = baseline.reused;
+    expect(reusedCount).toBeGreaterThan(0);
+
+    // 只改 mtime，内容一字不动 → mtime 变但内容 hash 相同，
+    // 应走「内容 hash 相同」复用分支，仍不 reindex（也不 re-embed）。
+    const target = path.join(incDir, "a.ts");
+    const future = new Date(Date.now() + 60_000);
+    await utimes(target, future, future);
+    const afterTouch = await indexProject(incDir);
+    expect(afterTouch.reindexed).toBe(0);
+    expect(afterTouch.reused).toBe(reusedCount);
+
+    // 再次索引，此时 mtime 已被刷新回写，走最快的 mtime 短路分支，同样零 reindex。
+    const stable = await indexProject(incDir);
+    expect(stable.reindexed).toBe(0);
+    expect(stable.reused).toBe(reusedCount);
   });
 
   test("删除的文件从索引清除", async () => {
