@@ -1,5 +1,6 @@
 mod concept_docs;
 mod history;
+mod license;
 mod llm;
 mod settings;
 mod sidecar;
@@ -43,23 +44,29 @@ async fn read_file(
 
 #[tauri::command]
 async fn summarize_project(
+  app: tauri::AppHandle,
   packed: PackedProject,
   locale: String,
 ) -> Result<ProjectSummary, String> {
+  // 服务端拦截：未激活不消耗用户 key 的 token（绕过前端 UI 也无效）。
+  license::ensure_activated(&app)?;
   llm::summarize(&packed, &locale).await
 }
 
 #[tauri::command]
 async fn deep_analyze(
+  app: tauri::AppHandle,
   packed: PackedProject,
   summary: ProjectSummary,
   locale: String,
 ) -> Result<Vec<DeepInsight>, String> {
+  license::ensure_activated(&app)?;
   llm::deep_analyze(&packed, &summary, &locale).await
 }
 
 #[tauri::command]
 async fn chat_ask(
+  app: tauri::AppHandle,
   window: tauri::Window,
   summary: ProjectSummary,
   history: Vec<ChatMessage>,
@@ -67,6 +74,7 @@ async fn chat_ask(
   locale: String,
   project_root: Option<String>,
 ) -> Result<(), String> {
+  license::ensure_activated(&app)?;
   llm::chat_stream(
     window,
     &summary,
@@ -115,6 +123,8 @@ pub fn run() {
       history::path_exists,
       history::save_chat,
       history::get_chat,
+      license::get_license_status,
+      license::activate_license,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

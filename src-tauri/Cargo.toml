@@ -29,6 +29,9 @@ futures-util = "0.3"
 anyhow = "1"
 thiserror = "2"
 tauri-plugin-store = "2.4.3"
+# 激活码校验（HMAC-SHA256，与 deploy/gen-license.mjs 逐位一致）
+hmac = "0.12"
+sha2 = "0.10"
 
 [lints.rust]
 unsafe_code = "forbid"

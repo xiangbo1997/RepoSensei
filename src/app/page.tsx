@@ -2,6 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivationGate } from "@/components/ActivationGate";
 import { ChatPanel, type ChatPanelHandle } from "@/components/ChatPanel";
 import { CodeSearch } from "@/components/CodeSearch";
 import { CodeViewer } from "@/components/CodeViewer";
@@ -45,6 +46,12 @@ export default function Home() {
   // null = 尚未查询；false = 未配置 key（.env.local 的 key 检测不到，故只提示不拦截）。
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [elapsedS, setElapsedS] = useState(0);
+  // 激活状态：null = 查询中（渲染空壳防闪烁）；未激活时全屏激活门拦截。
+  // Rust 端对 LLM 命令另有服务端拦截，这里只是 UI 层引导。
+  const [license, setLicense] = useState<{
+    activated: boolean;
+    machineId: string;
+  } | null>(null);
   const chatRef = useRef<ChatPanelHandle | null>(null);
 
   const refreshRecents = useCallback(async () => {
@@ -64,10 +71,24 @@ export default function Home() {
     }
   }, []);
 
+  const refreshLicense = useCallback(async () => {
+    try {
+      setLicense(
+        await invoke<{ activated: boolean; machineId: string }>(
+          "get_license_status",
+        ),
+      );
+    } catch {
+      // 命令不可用（如纯浏览器调试）时不拦截，避免开发环境卡死。
+      setLicense({ activated: true, machineId: "" });
+    }
+  }, []);
+
   useEffect(() => {
     void refreshRecents();
     void refreshHasKey();
-  }, [refreshRecents, refreshHasKey]);
+    void refreshLicense();
+  }, [refreshRecents, refreshHasKey, refreshLicense]);
 
   const reset = useCallback(() => {
     setStage("idle");
@@ -234,6 +255,18 @@ export default function Home() {
     const timer = window.setInterval(() => setElapsedS((s) => s + 1), 1000);
     return () => window.clearInterval(timer);
   }, [isWorking]);
+
+  // 激活门：未激活时全屏拦截（含首启）。license 为 null（查询中）时先渲染空壳，避免闪烁。
+  if (license && !license.activated) {
+    return (
+      <main className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+        <ActivationGate
+          machineId={license.machineId}
+          onActivated={() => void refreshLicense()}
+        />
+      </main>
+    );
+  }
 
   return (
     <main className="h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 selection:bg-amber-200 dark:selection:bg-amber-900">
