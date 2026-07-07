@@ -9,15 +9,18 @@
 #       生成激活码用的密钥须与构建 App 时的 RS_LICENSE_SECRET 一致（读 deploy/.env）。
 #
 # 用法：
-#   ./deploy/pack-delivery.sh 0001                      # V2 主流程：包内放「如何激活」引导
-#   BIND_MACHINE=<识别码> ./deploy/pack-delivery.sh 0001 # 买家已发来识别码：打入绑定码
-#   LEGACY_V1=1 ./deploy/pack-delivery.sh 0001          # V1 通用码（会被复用，不推荐）
+#   ./deploy/pack-delivery.sh 0001                      # 默认：V1 码随包直接交付（开箱即激活）
+#   BIND_MACHINE=<识别码> ./deploy/pack-delivery.sh 0001 # V2 绑定码：买家已发来识别码时用
+#   NO_CODE=1 ./deploy/pack-delivery.sh 0001            # 不带码：走「先发识别码再换码」流程
 #   ZIP=1 ./deploy/pack-delivery.sh 0001                # 顺带压缩成 .zip
+#
+# 取舍说明：V1 码任意机器可激活（买家体验最顺，零来回），码内含订单序号可追溯泄露源；
+#           若发现某单的码被公开传播，后续单改用 BIND_MACHINE 的 V2 绑定码即可。
 #
 # 产物：deploy/delivery/<序号>/
 #   ├── RepoSensei_<版本>_<架构>.dmg
 #   ├── 买家必读-如何打开与配置.md
-#   └── 激活码.txt 或 如何激活.txt
+#   └── 激活码.txt（默认）或 如何激活.txt（NO_CODE=1）
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -62,13 +65,14 @@ if [[ -n "${BIND_MACHINE:-}" ]]; then
   [[ -n "${LICENSE_CODE}" ]] || die "生成绑定码失败（--machine ${BIND_MACHINE}）。"
   CODE_KIND="v2"
   log "V2 绑定码（绑定机器 ${BIND_MACHINE}）：${LICENSE_CODE}"
-elif [[ "${LEGACY_V1:-0}" == "1" ]]; then
-  LICENSE_CODE="$(node "${ROOT_DIR}/deploy/gen-license.mjs" "${SERIAL}" 2>/dev/null | tail -1)"
-  [[ -n "${LICENSE_CODE}" ]] || die "生成 V1 通用码失败。"
-  CODE_KIND="v1"
-  warn "V1 通用码（任意机器可激活、会被复用）：${LICENSE_CODE}"
+elif [[ "${NO_CODE:-0}" == "1" ]]; then
+  log "NO_CODE 流程：交付包不含激活码，买家打开后发本机识别码给你再生成。"
 else
-  log "V2 流程：首发交付包不含激活码，买家打开后发本机识别码给你再生成。"
+  # 默认：V1 码随包直接交付。码内含订单序号（可追溯），请勿公开展示。
+  LICENSE_CODE="$(node "${ROOT_DIR}/deploy/gen-license.mjs" "${SERIAL}" 2>/dev/null | tail -1)"
+  [[ -n "${LICENSE_CODE}" ]] || die "生成 V1 激活码失败。"
+  CODE_KIND="v1"
+  log "V1 激活码（序号 ${SERIAL}，随包交付）：${LICENSE_CODE}"
 fi
 
 # ── 4. 组装交付目录 ──────────────────────────────────────────────────────────
@@ -96,6 +100,14 @@ RepoSensei — 如何激活
 交付序号：${SERIAL}
 EOF
 else
+  # 尾注按码型区分：V1 换机可复用同一码；V2 与机器绑定，换机需找卖家换码。
+  if [[ "${CODE_KIND}" == "v1" ]]; then
+    CODE_NOTE="激活后永久可用、无需联网。换电脑重装后用同一个码再激活一次即可。
+此码与你的订单绑定（序号 ${SERIAL}），请勿公开外传——外传可追溯到本单。"
+  else
+    CODE_NOTE="激活后永久可用、无需联网。此码与你这台电脑绑定，换电脑请联系卖家换码。
+交付序号：${SERIAL}"
+  fi
   cat > "${OUT_DIR}/激活码.txt" <<EOF
 RepoSensei — 你的专属激活码
 ================================
@@ -106,12 +118,11 @@ RepoSensei — 你的专属激活码
 
 使用步骤：
 1. 双击 .dmg，把「RepoSensei」拖进「应用程序」。
-2. 打开 App（首次打开方法见「买家必读」文件）。
-3. 在弹出的激活框粘贴上面的激活码，点「激活」。
+2. 打开 App（首次打开方法见「买家必读」文件第 2 步）。
+3. 在激活界面粘贴上面的激活码，点「激活」。
 4. 进入后按「买家必读」配置你自己的 API Key，即可开始使用。
 
-激活为本机一次性，激活后永久可用、无需联网。请勿外传。
-交付序号：${SERIAL}
+${CODE_NOTE}
 EOF
 fi
 

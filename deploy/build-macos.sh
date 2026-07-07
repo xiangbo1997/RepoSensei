@@ -69,8 +69,26 @@ log "  next build       约 1 分钟"
 log "  cargo release    首次 5-15 分钟（有 Compiling 输出就是在推进）；增量约 1-2 分钟"
 RS_LICENSE_SECRET="${RS_LICENSE_SECRET:-}" pnpm tauri build
 
-# ── 4. 产物 ──────────────────────────────────────────────────────────────────
+# ── 4. 泄漏门禁：卖家凭据绝不能出现在产物里（BYOK：买家自备 key）────────────
+# 从 .env.local 提取卖家的 key/baseURL，全量扫描 .app 与前端产物，命中即失败。
 BUNDLE_DIR="${ROOT_DIR}/src-tauri/target/release/bundle"
+APP_PATH="$(find "${BUNDLE_DIR}/macos" -maxdepth 1 -name '*.app' | head -1 || true)"
+if [[ -f "${ROOT_DIR}/.env.local" && -n "${APP_PATH}" ]]; then
+  log "泄漏门禁：扫描产物中是否含卖家凭据…"
+  LEAKED=0
+  while IFS= read -r secret; do
+    [[ ${#secret} -ge 12 ]] || continue  # 太短的值跳过，避免误报
+    if grep -rq "${secret}" "${APP_PATH}" "${ROOT_DIR}/dist" 2>/dev/null; then
+      warn "产物中发现 .env.local 里的敏感值（前 8 位：${secret:0:8}…）"
+      LEAKED=1
+    fi
+  done < <(grep -E '^(OPENAI_API_KEY|ANTHROPIC_API_KEY|OPENAI_BASE_URL)=' "${ROOT_DIR}/.env.local" \
+           | cut -d= -f2- | tr -d '"' | tr -d "'")
+  [[ "${LEAKED}" == "0" ]] || die "泄漏门禁失败：卖家凭据进入了构建产物，禁止分发！排查后重新构建。"
+  log "泄漏门禁通过：产物不含卖家 key / baseURL ✓"
+fi
+
+# ── 5. 产物 ──────────────────────────────────────────────────────────────────
 log "构建完成，产物："
 find "${BUNDLE_DIR}/macos" -maxdepth 1 -name '*.app' 2>/dev/null | sed 's/^/  /' || true
 find "${BUNDLE_DIR}/dmg"   -maxdepth 1 -name '*.dmg' 2>/dev/null | sed 's/^/  /' || true

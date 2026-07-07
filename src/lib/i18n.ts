@@ -154,12 +154,12 @@ const en: Dict = {
 
   "license.title": "Activate RepoSensei",
   "license.desc":
-    "One code per machine. Send the machine ID below to the seller and paste back the activation code you receive.",
+    "Paste the activation code from the 激活码.txt file in your delivery package, then click Activate.",
   "license.machineId": "Machine ID",
   "license.copy": "Copy",
   "license.copied": "Copied ✓",
   "license.hint":
-    "The machine ID is a one-way hash of this Mac's hardware identifier — it contains no personal data and is safe to share.",
+    "Only needed for machine-bound licenses: if the seller asks, send them this machine ID (a one-way hardware hash, no personal data).",
   "license.placeholder": "Paste activation code, e.g. V2:XXXX.XXXX",
   "license.activate": "Activate",
   "license.activating": "Activating…",
@@ -304,12 +304,12 @@ const zh: Dict = {
 
   "license.title": "激活 RepoSensei",
   "license.desc":
-    "本 App 一机一码。把下面的「本机识别码」发给卖家，把收到的激活码粘贴回来即可。",
+    "打开交付包里的「激活码.txt」，把里面的激活码粘贴到下方，点「激活」即可。",
   "license.machineId": "本机识别码",
   "license.copy": "复制",
   "license.copied": "已复制 ✓",
   "license.hint":
-    "识别码是本机硬件标识的单向哈希，不含任何隐私信息，可放心发给卖家。",
+    "仅机器绑定版需要：若卖家要求，把这串识别码发给卖家换码。它是硬件标识的单向哈希，不含隐私。",
   "license.placeholder": "粘贴激活码，形如 V2:XXXX.XXXX",
   "license.activate": "激活",
   "license.activating": "激活中…",
