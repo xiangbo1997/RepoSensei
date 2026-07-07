@@ -19,7 +19,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${ROOT_DIR}"
 
-log()  { printf '\033[1;34m[build]\033[0m %s\n' "$*"; }
+# 日志带时间戳：长阶段（release 编译 5-15 分钟）能看出在推进还是卡死。
+log()  { printf '\033[1;34m[build %s]\033[0m %s\n' "$(date +%H:%M:%S)" "$*"; }
 warn() { printf '\033[1;33m[warn ]\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31m[err  ]\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -46,7 +47,7 @@ fi
 
 # ── 2. 依赖与质量门 ──────────────────────────────────────────────────────────
 log "安装依赖…"
-pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+pnpm install --frozen-lockfile || pnpm install
 
 if [[ "${SKIP_CHECKS:-0}" != "1" ]]; then
   log "质量门：biome lint…"
@@ -61,7 +62,11 @@ fi
 
 # ── 3. 构建（tauri 自动执行 prepare:sidecar + build:next）───────────────────
 # RS_LICENSE_SECRET 通过环境变量传给 cargo，license.rs 在编译期 option_env! 读取。
-log "开始 tauri build（首次较慢，需下载 Node 运行时打进 app）…"
+log "开始 tauri build。耗时预期："
+log "  prepare:sidecar  秒级（node/repomix 均有缓存；首次需下载，慢网络可设"
+log "  RS_NODE_MIRROR / RS_NPM_REGISTRY 切国内镜像）"
+log "  next build       约 1 分钟"
+log "  cargo release    首次 5-15 分钟（有 Compiling 输出就是在推进）；增量约 1-2 分钟"
 RS_LICENSE_SECRET="${RS_LICENSE_SECRET:-}" pnpm tauri build
 
 # ── 4. 产物 ──────────────────────────────────────────────────────────────────

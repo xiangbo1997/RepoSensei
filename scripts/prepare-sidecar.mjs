@@ -83,12 +83,40 @@ function nodeDistTarget() {
   throw new Error(`unsupported platform for embedded node: ${platform}/${arch}`);
 }
 
-/** 从 nodejs.org 拉取 SHASUMS256.txt，取指定文件名的 sha256。 */
+// Node 发行包下载基址。国内网络对 nodejs.org 直连常见假死，可用环境变量切镜像：
+//   RS_NODE_MIRROR=https://npmmirror.com/mirrors/node node scripts/prepare-sidecar.mjs
+// 镜像目录布局与官方一致（/v<ver>/<file> 与 /v<ver>/SHASUMS256.txt）。
+const NODE_DIST_BASE = (process.env.RS_NODE_MIRROR ?? "https://nodejs.org/dist").replace(/\/$/, "");
+
+/**
+ * 带超时 + 进度输出的下载。原实现用裸 fetch：无超时会在慢网络下无限假死，
+ * 无进度让人分不清「在下」还是「卡死」。
+ */
+async function fetchBuffer(url, { timeoutMs, label }) {
+  const res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error(`fetch ${url} failed: ${res.status}`);
+  const total = Number(res.headers.get("content-length") ?? 0);
+  const chunks = [];
+  let received = 0;
+  let lastLogged = 0;
+  for await (const chunk of res.body) {
+    chunks.push(chunk);
+    received += chunk.length;
+    // 每 5MB 报一次进度，证明还活着。
+    if (received - lastLogged >= 5 * 1024 * 1024) {
+      lastLogged = received;
+      const pct = total ? ` (${Math.round((received / total) * 100)}%)` : "";
+      console.log(`[prepare-sidecar] ${label}: ${(received / 1024 / 1024).toFixed(1)}MB${pct}`);
+    }
+  }
+  return Buffer.concat(chunks);
+}
+
+/** 从下载源拉取 SHASUMS256.txt，取指定文件名的 sha256。 */
 async function fetchExpectedSha(fileName) {
-  const url = `https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`fetch SHASUMS256 failed: ${res.status}`);
-  const text = await res.text();
+  const url = `${NODE_DIST_BASE}/v${NODE_VERSION}/SHASUMS256.txt`;
+  const buf = await fetchBuffer(url, { timeoutMs: 30_000, label: "SHASUMS256" });
+  const text = buf.toString("utf8");
   for (const line of text.split("\n")) {
     const [sha, name] = line.trim().split(/\s+/);
     if (name === fileName) return sha;
@@ -115,15 +143,17 @@ async function prepareNodeBinary() {
 
   const { pkg, ext, binInArchive } = nodeDistTarget();
   const fileName = `${pkg}.${ext}`;
-  const url = `https://nodejs.org/dist/v${NODE_VERSION}/${fileName}`;
+  const url = `${NODE_DIST_BASE}/v${NODE_VERSION}/${fileName}`;
   console.log(`[prepare-sidecar] downloading ${url}`);
+  console.log(
+    "[prepare-sidecar] （约 45MB；慢或超时可切镜像：RS_NODE_MIRROR=https://npmmirror.com/mirrors/node）",
+  );
 
   const work = mkdtempSync(path.join(tmpdir(), "reposensei-node-"));
   try {
     const archivePath = path.join(work, fileName);
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`download node failed: ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
+    // 10 分钟硬超时：慢可以，无限假死不行。
+    const buf = await fetchBuffer(url, { timeoutMs: 600_000, label: "node" });
     writeFileSync(archivePath, buf);
 
     // 校验 SHA256 防篡改/损坏。
@@ -194,7 +224,24 @@ function prepareRepomixDeps() {
   const repomixVersion = JSON.parse(
     readFileSync(path.join(ROOT, "node_modules", "repomix", "package.json"), "utf8"),
   ).version;
-  console.log(`[prepare-sidecar] resolving repomix@${repomixVersion} prod deps via npm`);
+
+  // 缓存命中即跳过（与 node 二进制同策略）：已就位且版本一致就不重装——
+  // 否则每次构建都从 npm 重拉整个依赖闭包（几百个包、零输出，慢网络下形同假死）。
+  // RS_FORCE_SIDECAR_DEPS=1 可强制重装。
+  const cachedPkg = path.join(SIDECAR_DST, "node_modules", "repomix", "package.json");
+  if (!process.env.RS_FORCE_SIDECAR_DEPS && existsSync(cachedPkg)) {
+    const cachedVersion = JSON.parse(readFileSync(cachedPkg, "utf8")).version;
+    if (cachedVersion === repomixVersion) {
+      console.log(
+        `[prepare-sidecar] repomix@${repomixVersion} deps already present, skip（RS_FORCE_SIDECAR_DEPS=1 可强制重装）`,
+      );
+      return;
+    }
+    console.log(
+      `[prepare-sidecar] cached repomix@${cachedVersion} ≠ wanted ${repomixVersion}, reinstalling`,
+    );
+  }
+  console.log(`[prepare-sidecar] resolving repomix@${repomixVersion} prod deps via npm（几百个包，慢网络需数分钟）`);
 
   const work = mkdtempSync(path.join(tmpdir(), "reposensei-repomix-"));
   try {
@@ -202,19 +249,20 @@ function prepareRepomixDeps() {
       path.join(work, "package.json"),
       JSON.stringify({ name: "rs-sidecar-deps", private: true, dependencies: { repomix: repomixVersion } }),
     );
-    // 显式用官方 registry：脚本在临时目录跑 npm，读不到项目 .npmrc，会落到用户
-    // 全局 ~/.npmrc（可能是国内镜像，如 npmmirror）——本机和海外 CI runner 都可能
-    // 因此解析失败。写死官方源，环境无关、可复现。
+    // 默认官方 registry（脚本在临时目录跑 npm，读不到项目 .npmrc，行为可复现）；
+    // 慢网络可用 RS_NPM_REGISTRY 覆盖（如 https://registry.npmmirror.com）。
+    // 日志用 notice 而非 error：让下载过程有输出，「慢」和「卡死」肉眼可分辨。
     // Windows 上 npm 是批处理 `npm.cmd`，必须经 shell 解释（execFileSync 直接执行
-    // .cmd 会 EINVAL）；参数为写死常量，无注入风险。macOS/Linux 的 `npm` 是真可
-    // 执行文件，直接 execFileSync。
+    // .cmd 会 EINVAL）；参数为写死常量/受控 env，无注入风险。macOS/Linux 的 `npm`
+    // 是真可执行文件，直接 execFileSync。
+    const registry = process.env.RS_NPM_REGISTRY ?? "https://registry.npmjs.org/";
     const npmArgs = [
       "install",
       "--omit=dev",
       "--no-audit",
       "--no-fund",
-      "--registry=https://registry.npmjs.org/",
-      "--loglevel=error",
+      `--registry=${registry}`,
+      "--loglevel=notice",
     ];
     if (process.platform === "win32") {
       execFileSync(`npm ${npmArgs.join(" ")}`, { cwd: work, stdio: "inherit", shell: true });
